@@ -19,7 +19,11 @@ Layout of the GLASS-AI network.
 Training data use for GLASS-AI.
 
 ## Installation
-Downlaod and run the installer for your operating system (Windows: GLASS_AI_installer.**exe**, Mac: GLASS_AI_installer.**app**). Each installer will also install a copy of the MATLAB Runtime that is required to run the program without a pre-existing copy of MATLAB (and requisite toolboxes). Installation time should be approximately 5 minutes.
+Download and run the installer for your operating system [here](http://timex.moffitt.org/GLASS-AI/Installers/). [Mac](http://timex.moffitt.org/GLASS-AI/Installers/GLASS-AI_installer_Mac.app.zip) Installers are hosted on by Moffitt Cancer Center due to their large file size. 
+
+Each installer will also install a copy of the MATLAB Runtime that is required to run the program without a pre-existing copy of MATLAB (and requisite toolboxes). A set of demo images is also included in the installers (see **Benchmarking** section below). 
+
+Installation time should be approximately 5 minutes.
 
 ## Usage
 GLASS-AI accepts SVS or TIF files as input. These images should be captured at 20x magnfication with a 0.502 microns/pixel resolution for best results.
