@@ -62,7 +62,7 @@ It is recommended that you try running GLASS-AI on some of these files before us
 > [xsmall.tif](http://timex.moffitt.org/GLASS-AI/Resources/Demo_images/XSmall.tif)| 3480x3480µm | 00:03:40  |           |  00:02:36  |  00:03:15
 > [small.tif](http://timex.moffitt.org/GLASS-AI/Resources/Demo_images/Small.tif)| 6746x6746µm | 00:14:25  |           |  00:09:39  |  00:12:05
 > [medium.tif](http://timex.moffitt.org/GLASS-AI/Resources/Demo_images/Medium.tif)| 8987x9726µm | 00:27:44  |           |  00:20:59  |  00:25:23
-> [slide.svs](http://timex.moffitt.org/GLASS-AI/Resources/Demo_images/whole%20slide.svs)|25000x23813µm|           |           |            | 3:10:43
+> [slide.svs](http://timex.moffitt.org/GLASS-AI/Resources/Demo_images/whole%20slide.svs)|25000x23813µm|           |           |            | 03:10:43
 
 > Computer Name | Operating System | CPU                         | GPU                                             | Memory              | Storage Type
 > :------------:|:----------------:|:---------------------------:|:-----------------------------------------------:|:-------------------:|:------------:
