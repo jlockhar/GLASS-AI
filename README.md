@@ -23,7 +23,7 @@ Download and run the installer for your operating system [here](http://timex.mof
 
 Each installer will also install a copy of the MATLAB Runtime that is required to run the program without a pre-existing copy of MATLAB (and requisite toolboxes). 
 
-A set of demo images is also included in the installers (see **Benchmarking** section below). Should you need to redownload the images, they are available as a `.zip` file [here](http://timex.moffitt.org/GLASS-AI/Resources/Demo_images/GLASS-AI_DemoImages.zip).
+A set of demo images is also included in the installers (see **Benchmarking** section below). Should you need to redownload the images, they are available as a `.zip` file [here](http://timex.moffitt.org/GLASS-AI/Resources/Demo_images/).
 
 Installation time should be approximately 5 minutes.
 
@@ -49,7 +49,7 @@ The steps for successfully running GLASS-AI are written in the graphic user inte
     - An preview of the original H&E image, output tumor grade map, and output tumor segmentaiton map will be displayed after each image is analyzed.
 
 ## Benchmarking
-A set of H&E images of various sizes are included in each distribution of GLASS-AI in the `Demo Data` folder. Should you need to redownload the images, they are available as a `.zip` file [here](http://timex.moffitt.org/GLASS-AI/Resources/Demo_images/GLASS-AI_DemoImages.zip).
+A set of H&E images of various sizes are included in each distribution of GLASS-AI in the `Demo Data` folder. Should you need to redownload the images, they are available as a `.zip` file [here](http://timex.moffitt.org/GLASS-AI/Resources/Demo_images/).
 
 It is recommended that you try running GLASS-AI on some of these files before using your own data. Not only will this tell you if the installation worked correctly, but it will also allow you to benchmark the performance of GLASS-AI on your computer. Prior to distirbution GLASS-AI was tested on a few different systems using the default analysis options, and the results from these tests are provided below along with the hardware specifications of each computer.
 
