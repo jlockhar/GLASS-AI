@@ -19,9 +19,11 @@ Layout of the GLASS-AI network.
 Training data use for GLASS-AI.
 
 ## Installation
-Download and run the installer for your operating system [here](http://timex.moffitt.org/GLASS-AI/Installers/) or `Right click` > `Save Link As...` on the link your operating system here: [Mac](http://timex.moffitt.org/GLASS-AI/Installers/GLASS-AI_installer_Mac.app.zip)  |  [Windows](http://timex.moffitt.org/GLASS-AI/Installers/GLASS_AI_Installer_Win.zip). Installers are hosted on by Moffitt Cancer Center due to their large file size. 
+Download and run the installer for your operating system [here](http://timex.moffitt.org/GLASS-AI/) or `Right click` > `Save Link As...` on the link your operating system here: [Mac](http://timex.moffitt.org/GLASS-AI/Installers/GLASS-AI_installer_Mac.app.zip)  |  [Windows](http://timex.moffitt.org/GLASS-AI/Installers/GLASS_AI_Installer_Win.zip). Installers are hosted on by Moffitt Cancer Center due to their large file size. 
 
-Each installer will also install a copy of the MATLAB Runtime that is required to run the program without a pre-existing copy of MATLAB (and requisite toolboxes). A set of demo images is also included in the installers (see **Benchmarking** section below). 
+Each installer will also install a copy of the MATLAB Runtime that is required to run the program without a pre-existing copy of MATLAB (and requisite toolboxes). 
+
+A set of demo images is also included in the installers (see **Benchmarking** section below). Should you need to redownload the images, they are available as a `.zip` file [here](http://timex.moffitt.org/GLASS-AI/Resources/Demo_images/GLASS-AI_DemoImages.zip).
 
 Installation time should be approximately 5 minutes.
 
@@ -47,21 +49,23 @@ The steps for successfully running GLASS-AI are written in the graphic user inte
     - An preview of the original H&E image, output tumor grade map, and output tumor segmentaiton map will be displayed after each image is analyzed.
 
 ## Benchmarking
-A set of H&E images of various sizes are included in each distribution of GLASS-AI in the `Demo Data` folder. It is recommended that you try running GLASS-AI on some of these files before using your own data. Not only will this tell you if the installation worked correctly, but it will also allow you to benchmark the performance of GLASS-AI on your computer. Prior to distirbution GLASS-AI was tested on a few different systems using the default analysis options, and the results from these tests are provided below along with the hardware specifications of each computer.
+A set of H&E images of various sizes are included in each distribution of GLASS-AI in the `Demo Data` folder. Should you need to redownload the images, they are available as a `.zip` file [here](http://timex.moffitt.org/GLASS-AI/Resources/Demo_images/GLASS-AI_DemoImages.zip).
+
+It is recommended that you try running GLASS-AI on some of these files before using your own data. Not only will this tell you if the installation worked correctly, but it will also allow you to benchmark the performance of GLASS-AI on your computer. Prior to distirbution GLASS-AI was tested on a few different systems using the default analysis options, and the results from these tests are provided below along with the hardware specifications of each computer.
 
 > Image Name | Image Size  | PC 1 Time | PC 2 Time | Mac 1 Time | Mac 2 Time
-> -----------|-------------|-----------|-----------|------------|-----------
-> 10patch.tif|1112x1112µm  | 00:00:25  |           | 00:00:26   | 00:00:32
-> 20patch.tif|2224x2224µm  | 00:01:18  |           | 00:01:07   | 00:01:20
-> 40patch.tif|4448x4448µm  | 00:06:26  |           | 00:04:30   | 00:05:25
-> xxsmall.tif|1500x1500µm  | 00:00:45  |           | 00:00:57   | 00:00:39
->  xsmall.tif|3480x3480µm  | 00:03:40  |           | 00:02:36   | 00:03:15
->   small.tif|6746x6746µm  | 00:14:25  |           | 00:09:39   | 00:12:05
->  medium.tif|8987x9726µm  | 00:27:44  |           | 00:20:59   | 00:25:23
->   slide.svs|25000x23813µm|           |           |            | 
+> ----------:|------------:|----------:|----------:|-----------:|----------:
+> [10patch.tif](http://timex.moffitt.org/GLASS-AI/Resources/Demo_images/10patch.tif)| 1112x1112µm | 00:00:25  |           |  00:00:26  |  00:00:32
+> [20patch.tif](http://timex.moffitt.org/GLASS-AI/Resources/Demo_images/20patch.tif)| 2224x2224µm | 00:01:18  |           |  00:01:07  |  00:01:20
+> [40patch.tif](http://timex.moffitt.org/GLASS-AI/Resources/Demo_images/40patch.tif)| 4448x4448µm | 00:06:26  |           |  00:04:30  |  00:05:25
+> [xxsmall.tif](http://timex.moffitt.org/GLASS-AI/Resources/Demo_images/XXSmall.tif)| 1500x1500µm | 00:00:45  |           |  00:00:57  |  00:00:39
+> [xsmall.tif](http://timex.moffitt.org/GLASS-AI/Resources/Demo_images/XSmall.tif)| 3480x3480µm | 00:03:40  |           |  00:02:36  |  00:03:15
+> [small.tif](http://timex.moffitt.org/GLASS-AI/Resources/Demo_images/Small.tif)| 6746x6746µm | 00:14:25  |           |  00:09:39  |  00:12:05
+> [medium.tif](http://timex.moffitt.org/GLASS-AI/Resources/Demo_images/Medium.tif)| 8987x9726µm | 00:27:44  |           |  00:20:59  |  00:25:23
+> [slide.svs](http://timex.moffitt.org/GLASS-AI/Resources/Demo_images/whole%20slide.svs)|25000x23813µm|           |           |            | 
 
 > Computer Name | Operating System | CPU                         | GPU                                             | Memory              | Storage Type
-> --------------|------------------|-----------------------------|-------------------------------------------------|---------------------|--------------
+> :------------:|:----------------:|:---------------------------:|:-----------------------------------------------:|:-------------------:|:------------:
 > PC 1          | Windows 10       | 
 > PC 2          | Windows 10       |
 > Mac 1         | MacOS 10.15.7    | 2.6GHz 6-core Intel Core i7 | AMD Radeon Pro 5300 M 4 GB (not used in testing)| 16 GB 2667 MHz DDR4 | SSD
