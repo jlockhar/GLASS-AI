@@ -62,12 +62,12 @@ It is recommended that you try running GLASS-AI on some of these files before us
 > [xsmall.tif](http://timex.moffitt.org/GLASS-AI/Resources/Demo_images/XSmall.tif)| 3480x3480µm | 00:03:40  |           |  00:02:36  |  00:03:15
 > [small.tif](http://timex.moffitt.org/GLASS-AI/Resources/Demo_images/Small.tif)| 6746x6746µm | 00:14:25  |           |  00:09:39  |  00:12:05
 > [medium.tif](http://timex.moffitt.org/GLASS-AI/Resources/Demo_images/Medium.tif)| 8987x9726µm | 00:27:44  |           |  00:20:59  |  00:25:23
-> [slide.svs](http://timex.moffitt.org/GLASS-AI/Resources/Demo_images/whole%20slide.svs)|25000x23813µm|           |           |            | 
+> [slide.svs](http://timex.moffitt.org/GLASS-AI/Resources/Demo_images/whole%20slide.svs)|25000x23813µm|           |           |            | 3:10:43
 
 > Computer Name | Operating System | CPU                         | GPU                                             | Memory              | Storage Type
 > :------------:|:----------------:|:---------------------------:|:-----------------------------------------------:|:-------------------:|:------------:
 > PC 1          | Windows 10       | 
-> PC 2          | Windows 10       |
+> PC 2          | Windows 10       | 2.7GHz 28-core Intel® Xeon® Gold 6258R | NVIDIA QUADRO RTX 5000 16 GB| 128 GB 1934 MHz | SSD
 > Mac 1         | MacOS 10.15.7    | 2.6GHz 6-core Intel Core i7 | AMD Radeon Pro 5300 M 4 GB (not used in testing)| 16 GB 2667 MHz DDR4 | SSD
 > Mac 2         | MacOS 10.14.6    | 3.5GHz 6-core Intel Xeon E5 | 2x AMD FirePro D500 3 GB (not used in testing)  | 16 GB 1866 MHz DDR3 | SSD
 
