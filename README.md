@@ -19,7 +19,7 @@ Layout of the GLASS-AI network.
 Training data use for GLASS-AI.
 
 ## Installation
-Download and run the installer for your operating system [here](http://timex.moffitt.org/GLASS-AI/Installers/). [Mac](http://timex.moffitt.org/GLASS-AI/Installers/GLASS-AI_installer_Mac.app.zip) Installers are hosted on by Moffitt Cancer Center due to their large file size. 
+Download and run the installer for your operating system [here](http://timex.moffitt.org/GLASS-AI/Installers/) or `Right click` > `Save Link As...` on the link your operating system here: [Mac](http://timex.moffitt.org/GLASS-AI/Installers/GLASS-AI_installer_Mac.app.zip)  |  [Windows](http://timex.moffitt.org/GLASS-AI/Installers/GLASS_AI_Installer_Win.zip). Installers are hosted on by Moffitt Cancer Center due to their large file size. 
 
 Each installer will also install a copy of the MATLAB Runtime that is required to run the program without a pre-existing copy of MATLAB (and requisite toolboxes). A set of demo images is also included in the installers (see **Benchmarking** section below). 
 
