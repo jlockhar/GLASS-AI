@@ -54,20 +54,20 @@ A set of H&E images of various sizes are included in each distribution of GLASS-
 It is recommended that you try running GLASS-AI on some of these files before using your own data. Not only will this tell you if the installation worked correctly, but it will also allow you to benchmark the performance of GLASS-AI on your computer. Prior to distirbution GLASS-AI was tested on a few different systems using the default analysis options, and the results from these tests are provided below along with the hardware specifications of each computer.
 
 > Image Name | Image Size  | PC 1 Time | PC 2 Time | Mac 1 Time | Mac 2 Time
-> ----------:|------------:|----------:|----------:|-----------:|----------:
-> [10patch.tif](http://timex.moffitt.org/GLASS-AI/Resources/Demo_images/10patch.tif)| 1112x1112µm | 00:00:25  |           |  00:00:26  |  00:00:32
-> [20patch.tif](http://timex.moffitt.org/GLASS-AI/Resources/Demo_images/20patch.tif)| 2224x2224µm | 00:01:18  |           |  00:01:07  |  00:01:20
-> [40patch.tif](http://timex.moffitt.org/GLASS-AI/Resources/Demo_images/40patch.tif)| 4448x4448µm | 00:06:26  |           |  00:04:30  |  00:05:25
-> [xxsmall.tif](http://timex.moffitt.org/GLASS-AI/Resources/Demo_images/XXSmall.tif)| 1500x1500µm | 00:00:45  |           |  00:00:57  |  00:00:39
-> [xsmall.tif](http://timex.moffitt.org/GLASS-AI/Resources/Demo_images/XSmall.tif)| 3480x3480µm | 00:03:40  |           |  00:02:36  |  00:03:15
-> [small.tif](http://timex.moffitt.org/GLASS-AI/Resources/Demo_images/Small.tif)| 6746x6746µm | 00:14:25  |           |  00:09:39  |  00:12:05
-> [medium.tif](http://timex.moffitt.org/GLASS-AI/Resources/Demo_images/Medium.tif)| 8987x9726µm | 00:27:44  |           |  00:20:59  |  00:25:23
+> ----------:|------------:|:---------:|:---------:|:----------:|:---------:
+> [10patch.tif](http://timex.moffitt.org/GLASS-AI/Resources/Demo_images/10patch.tif)| 1112x1112µm | 00:00:25 | 00:00:23 | 00:00:26 | 00:00:32
+> [20patch.tif](http://timex.moffitt.org/GLASS-AI/Resources/Demo_images/20patch.tif)| 2224x2224µm | 00:01:18 | 00:00:54 | 00:01:07 | 00:01:20
+> [40patch.tif](http://timex.moffitt.org/GLASS-AI/Resources/Demo_images/40patch.tif)| 4448x4448µm | 00:06:26 | 00:02:37 | 00:04:30 | 00:05:25
+> [xxsmall.tif](http://timex.moffitt.org/GLASS-AI/Resources/Demo_images/XXSmall.tif)| 1500x1500µm | 00:00:45 | 00:00:28 | 00:00:57 | 00:00:39
+> [xsmall.tif](http://timex.moffitt.org/GLASS-AI/Resources/Demo_images/XSmall.tif)| 3480x3480µm | 00:03:40 |  00:01:52 | 00:02:36 | 00:03:15
+> [small.tif](http://timex.moffitt.org/GLASS-AI/Resources/Demo_images/Small.tif)| 6746x6746µm | 00:14:25 | 00:07:03 | 00:09:39 | 00:12:05
+> [medium.tif](http://timex.moffitt.org/GLASS-AI/Resources/Demo_images/Medium.tif)| 8987x9726µm | 00:27:44 | 00:13:54 | 00:20:59 | 00:25:23
 > [slide.svs](http://timex.moffitt.org/GLASS-AI/Resources/Demo_images/whole%20slide.svs)|25000x23813µm|           |           |            | 03:10:43
 
 > Computer Name | Operating System | CPU                         | GPU                                             | Memory              | Storage Type
 > :------------:|:----------------:|:---------------------------:|:-----------------------------------------------:|:-------------------:|:------------:
-> PC 1          | Windows 10       | 
-> PC 2          | Windows 10       | 2.7GHz 28-core Intel® Xeon® Gold 6258R | NVIDIA QUADRO RTX 5000 16 GB| 128 GB 1934 MHz | SSD
+> PC 1          | Windows 10       | 3.8Ghz 8-core AMD Ryzen 7 1700X | AMD Radeon RX 580 GTS 8 GB (not used in testing)| 16 GB | SSD
+> PC 2          | Windows 10       | 2.7GHz 28-core Intel Xeon® Gold 6258R | NVIDIA QUADRO RTX 5000 16 GB| 128 GB 1934 MHz | SSD
 > Mac 1         | MacOS 10.15.7    | 2.6GHz 6-core Intel Core i7 | AMD Radeon Pro 5300 M 4 GB (not used in testing)| 16 GB 2667 MHz DDR4 | SSD
 > Mac 2         | MacOS 10.14.6    | 3.5GHz 6-core Intel Xeon E5 | 2x AMD FirePro D500 3 GB (not used in testing)  | 16 GB 1866 MHz DDR3 | SSD
 
