@@ -1,12 +1,6 @@
 # GLASS-AI: Grading of Lung Adenocarcinoma with Simultaneous Segmentation by an Artificial Intelligence
 
->Analyzing histological images is time consuming process. 🐌
->
->Tumor grading is determined using an algorithm. 📋
->
->Sounds like a job for a computer. 🤖
-
-Histological grading of lung adenocarcnioma (LUAD) provides a ordinal measure of tumor progression, and thereby disease prognosis. While these systmes are routinely used by patholgists in a clincical setting, they are less commonly employed in the analysis of preclincal models of cancer. Researchers can be trained to grade their samples by others with sufficient expertise, but the gold standard for such analysis is still review by a clinical pathologist. However, reseachers may not have access to a collaborative pathologist, and clinicians may not be (readily) available to work on preclinical samples. A tool that can perform accurate, reproducible analysis of tumor grades in preclinical models would enhance and accelerate this imporant level of research. To that end we developed GLASS-AI to provide a simple means for anyone to automatically analyze their LUAD slides.
+Preclinical mouse models of lung adenocarcinoma are invaluable for the discovery of molecular drivers of tumor formation, progression, and therapeutic resistance. Histological analyses of these preclinical models require significant investments of time and training to ensure accuracy and consistency. Analysis by a clinical pathologist is the gold standard in this approach, but may be difficult to obtain due to the cost and availability of their services. As an alternative we have developed a digital pathology tool to identify, segment, grade, and analyze tumors in mouse models of lung adenocarcinoma. 
 
 GLASS-AI was developed using [MATLAB v2021a](https://www.mathworks.com/products/matlab.html) using the [Image Processing v11.3](https://www.mathworks.com/products/image.html), [Deep Learning v14.2](https://www.mathworks.com/products/deep-learning.html), [Computer Vision 10.0](https://www.mathworks.com/products/computer-vision.html), and [Parallel Computing v7.4](https://www.mathworks.com/products/parallel-computing.html) Toolboxes. MATLAB is not a free software, but it does allow us to compile our code to standalone application/executable for distribution using the [MATLAB Compiler v8.2](https://www.mathworks.com/products/compiler.html). The code within these standalone applications is automatically obfuscated by MATLAB. The uncompiled code used to build these applications is provided in the `/src` folder with each version of GLASS-AI.
 
@@ -68,8 +62,8 @@ It is recommended that you try running GLASS-AI on some of these files before us
 > :------------:|:----------------:|:---------------------------:|:-----------------------------------------------:|:-------------------:|:------------:
 > PC 1          | Windows 10       | 3.8Ghz 8-core AMD Ryzen 7 1700X | AMD Radeon RX 580 GTS 8 GB (not used in testing)| 16 GB | SSD
 > PC 2          | Windows 10       | 2.7GHz 28-core Intel Xeon® Gold 6258R | NVIDIA QUADRO RTX 5000 16 GB| 128 GB 1934 MHz | SSD
-> Mac 1         | MacOS 10.15.7    | 2.6GHz 6-core Intel Core i7 | AMD Radeon Pro 5300 M 4 GB (not used in testing)| 16 GB 2667 MHz DDR4 | SSD
-> Mac 2         | MacOS 10.14.6    | 3.5GHz 6-core Intel Xeon E5 | 2x AMD FirePro D500 3 GB (not used in testing)  | 16 GB 1866 MHz DDR3 | SSD
+> Mac 1 (2019 Macbook Pro)        | MacOS 10.15.7    | 2.6GHz 6-core Intel Core i7 | AMD Radeon Pro 5300 M 4 GB (not used in testing)| 16 GB 2667 MHz DDR4 | SSD
+> Mac 2 (2013 Mac Pro)       | MacOS 10.14.6    | 3.5GHz 6-core Intel Xeon E5 | 2x AMD FirePro D500 3 GB (not used in testing)  | 16 GB 1866 MHz DDR3 | SSD
 
 
 ## License
