@@ -23,6 +23,8 @@ Download and run the installer for your operating system [here](http://timex.mof
 
 Each installer will also install a copy of the MATLAB Runtime that is required to run the program without a pre-existing copy of MATLAB (and requisite toolboxes). 
 
+You can also use the GLASS_AI_APP.m files in this repository if you have the required MATLAB version and toolboxes (described above). You will also need to download the pre-trained GLASS-AI neural network from [here](http://timex.moffitt.org/GLASS-AI/Resources/Net/) as the file is too large to host on GitHub.
+
 A set of demo images is also included in the installers (see **Benchmarking** section below). Should you need to redownload the images, they are available as a `.zip` file [here](http://timex.moffitt.org/GLASS-AI/Resources/Demo_images/).
 
 Installation time should be approximately 5 minutes.
@@ -35,18 +37,16 @@ The steps for successfully running GLASS-AI are written in the graphic user inte
 2. Click `Output folder` button to navigate to directory where you would like the output images and spreadsheets to be deposited.
 3. Select file(s) that you want to analyze from the `File Name` table.
 4. Change any analysis options you wish to adjust.
+   - Tooltips for each option are shown if you hover your mouse over them.
+   - Depending on the memory available on your computer and the input image size, GLASS-AI may automatically enable "Low Memory Mode".
    - The results reported in [Lockhart *et al.* 2022](add a link when paper is published) were generated using the values set by default.
-   - `Analysis block size` determines how many image patches should be analyzed at once. Adjusted downward if your computer has a smaller amount of memory.
-      - A series of image files with various sizes is included in `\Demo data` and can be used to benchmark performance on your machine.
-   - `Tumor size threshold` will filter out smaller tumors from the spreadsheet and tumor segmentation map.
-   - `Tumor merge radius` will connect tumors within the set edge-to-edge distance into a single tumor.
-6.  Click `Run` and wait for results
+5.  Click `Run` and wait for results
     - The `Run` button will not be enabled until Steps 1 - 3 are completed (indicated by green lights)
     - The program will provide status updates at each step of the analysis to give you an idea of how far along it is.
-    - GLASS-Ai will attempt to use your GPU to perform analysis before resorting to using the CPU. Using a GPU is much faster, but requires specific [Nvidia hardware and CUDA drivers](https://www.mathworks.com/help/parallel-computing/gpu-support-by-release.html).
+    - GLASS-AI will attempt to use your GPU to perform analysis before resorting to using the CPU. Using a GPU is much faster, but requires specific [Nvidia hardware and CUDA drivers](https://www.mathworks.com/help/parallel-computing/gpu-support-by-release.html).
       - GPU acceleration is not available on Mac OS. 
     - The "Analyzing Images" step is by far the longest. The status will update for each analysis block. A dialog window will show you the progress on the current block with an estimated time to completion.
-    - An preview of the original H&E image, output tumor grade map, and output tumor segmentaiton map will be displayed after each image is analyzed.
+    
 
 ## Benchmarking
 A set of H&E images of various sizes are included in each distribution of GLASS-AI in the `Demo Data` folder. Should you need to redownload the images, they are available as a `.zip` file [here](http://timex.moffitt.org/GLASS-AI/Resources/Demo_images/).
