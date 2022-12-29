@@ -132,7 +132,7 @@ classdef GLASS_AI_APP < matlab.apps.AppBase
     properties (Access = private)
 
         % PARAMETERS %
-        GLASSAI_APP_VERSION = 'v0.9r' % Version of GLASS-AI standalone app
+        GLASSAI_APP_VERSION = 'v0.9.3r' % Version of GLASS-AI standalone app
         INPUT_PATH  % Path selected using BrowseButton
         OUTPUT_PATH % Path selected using OutputFolderButton
         SELECTED_FILES % List of files selected in FileTable
@@ -185,6 +185,14 @@ classdef GLASS_AI_APP < matlab.apps.AppBase
         analysisEndTime % Store time analysis completed
 
 
+        SkipPatchFailed = 0; % Flag for showing alert once when patch skipping has failed
+        LowMemoryMode % Store Low Memory Mode switch state at run start
+        currentFileName % Store file name of the image being analyzed
+        currentFileExt % Store extension of the image being analyzed
+        currentFileNameExt % Store file name and extension of the image being analyzed
+        currentFilePath % Store path to image being analyzed
+        logFileName % name of log file
+        logFilePath % location of log file
     end
 
     methods (Access = private)
@@ -203,16 +211,26 @@ classdef GLASS_AI_APP < matlab.apps.AppBase
             net = app.GLASS_AI;
             app.iImage = 0; %initialize image counter to 0
 
+
             %--% process each image
             for n = 1 : app.nImages
 
-                %---% load image
                 app.iImage = app.iImage + 1;
 
-                %---% get image file info
-                filePath = app.SELECTED_PATHS{n};
-                [~,filename,~] = fileparts(app.SELECTED_FILES{n});
+                %reset low memory mode to original value in case it was changed for previous image
+                if app.LowMemoryMode == 1
+                    app.SPLIT_IMAGE = 1;
+                else
+                    app.SPLIT_IMAGE = 0;
+                end
 
+                %---% get image file info
+                app.currentFilePath = app.SELECTED_PATHS{n};
+                [~,app.currentFileName,app.currentFileExt ] = fileparts(app.SELECTED_FILES{n});
+                app.currentFileNameExt = strcat(app.currentFileName,app.currentFileExt);
+                fprintf("%s %0.0f %s\n","----- Start image",app.iImage,"-----")
+
+                fprintf("%s - %s %s\n",string(datetime),"Beginning analysis of", app.currentFileNameExt)
 
                 %_Status Update_%
                 app.analysisStepDescription = "Loading image";
@@ -221,21 +239,25 @@ classdef GLASS_AI_APP < matlab.apps.AppBase
 
                 %---% read input image
                 try
-                    [wholeImage] = readimage(app,filePath);
+                    fprintf("%s - %s %s\n",string(datetime),"Begin reading image for", app.currentFileNameExt)
+                    [wholeImage] = readimage(app,app.currentFilePath);
+                    fprintf("%s - %s %s\n",string(datetime),"Finished reading image for", app.currentFileNameExt)
                 catch ME
                     %give more info on error in status box
                     message_text = "An error occured while loading the input image from" + ...
-                        filename + "." + newline + "If this error persits, try reinstalling GLASS-AI."+...
+                        app.currentFileName + "." + newline + "If this error persits, try reinstalling GLASS-AI."+...
                         newline + "[ERROR MESSAGE]" + newline + ME.message;
                     uialert(app.GLASSAIUIFigure,message_text,"Image loading error");
+                    fprintf("%s - %s %s\n",string(datetime),"ERROR: An error occured while loading", app.currentFileNameExt)
                     %rethrow error to stop execution
                     rethrow(ME);
                 end
 
                 %---% process image into analysis blocks
                 [X, Y, Z] = size(wholeImage);
+                fprintf("%s - %s %s: %.0f x %.0f x %.0f\n",string(datetime),"Image dimensions for", app.currentFileNameExt, X, Y, Z)
                 bigBlockSize=224*app.IMAGE_BLOCK_SIZE;
-
+                fprintf("%s - %s %s: %.0f x %.0f \n",string(datetime),"Set image block dimensions for", app.currentFileNameExt, bigBlockSize, bigBlockSize)
 
                 % shrink block size to ensure at least one full 224x224
                 % patch remains in each block (required for 'apply'
@@ -243,14 +265,17 @@ classdef GLASS_AI_APP < matlab.apps.AppBase
                 % At least 1 full block & some remainder in X or Y
                 if (X/bigBlockSize>=1 &&mod(X,bigBlockSize)<224 && ~mod(X,bigBlockSize)==0) || (Y/bigBlockSize>=1 && mod(Y,bigBlockSize) < 224 && ~mod(Y,bigBlockSize)==0)
                     bigBlockSize = 224 * (app.IMAGE_BLOCK_SIZE-1);
+                    fprintf("%s - %s %s: %.0f x %.0f\n",string(datetime),"NOTE: Adjusted block dimensions for", app.currentFileNameExt, bigBlockSize, bigBlockSize)
                 end
 
                 % don't use low memory mode if block size is bigger than
                 % image size. No benefit.
-                if (bigBlockSize >= X && bigBlockSize >= Y)
+                if (bigBlockSize >= X && bigBlockSize >= Y && app.SPLIT_IMAGE == true)
                     app.SPLIT_IMAGE = false;
+                    fprintf("%s - %s %s\n",string(datetime),"NOTE: Disabled low memory mode due to small size of ", app.currentFileNameExt)
                 end
 
+                % generate image block arrangement, names, and coordinates
                 [blockNames, blockCoords] = generateimageblockinfo(app,bigBlockSize,X,Y);
 
 
@@ -267,27 +292,41 @@ classdef GLASS_AI_APP < matlab.apps.AppBase
                     try
                         if exist('ImageBlocksTemp', 'dir'), rmdir('ImageBlocksTemp', 's'); end
                         mkdir("ImageBlocksTemp");
+                        fprintf("%s - %s\n",string(datetime),"Low Memory Mode: Created ImageBlocksTemp directory.")
                         % class blocks
                         if exist('ClassBlocksTemp', 'dir'), rmdir('ClassBlocksTemp', 's'); end
                         mkdir("ClassBlocksTemp");
+                        fprintf("%s - %s\n",string(datetime),"Low Memory Mode: Created ClassBlocksTemp directory.")
                         % normalized image blocks
                         if app.NORMALIZE_STAINS == true
                             if exist('NormBlocksTemp', 'dir'), rmdir('NormBlocksTemp', 's'); end
                             mkdir("NormBlocksTemp");
+                            fprintf("%s - %s\n",string(datetime),"Low Memory Mode: Created NormBlocksTemp directory.")
                         end
                     catch ME
                         message_text = "There was an error making directories for storing image blocks on disk." + ...
                             newline + "Make sure that you have read/write permission for the Output directory." +...
                             newline + app.OUTPUT_PATH + newline + "[ERROR MESSAGE]" + newline + ME.message;
                         uialert(app.GLASSAIUIFigure,message_text,"Image processing error")
+                        fprintf("%s - %s %s\n",string(datetime),"ERROR: There was an error making temporary directories for",app.currentFileExt)
                         %rethrow error to stop execution
                         rethrow(ME);
                     end
 
 
                     % divide image based on block size.
-                    splitimagetoblockfiles(app,wholeImage, X, Y, bigBlockSize);
-                    clear wholeImage % unload image from  memory
+                    try
+                        splitimagetoblockfiles(app,wholeImage, X, Y, bigBlockSize);
+                        clear wholeImage % unload image from  memory
+                    catch ME
+                        message_text = "GLASS-AI encountered an error during image division." + ...
+                            newline + "[ERROR MESSAGE]" + newline + ME.message;
+                        uialert(app.GLASSAIUIFigure,message_text,"Analysis error")
+                        fprintf("%s - %s %s\n",string(datetime),"ERROR: An error occured during division of", app.currentFileNameExt)
+                        %rethrow error to stop execution
+                        rethrow(ME);
+                    end
+
 
                 else % normal mode
                     %initialize containers for classfications and
@@ -300,38 +339,52 @@ classdef GLASS_AI_APP < matlab.apps.AppBase
 
                 %---% iterate over image blocks
                 app.iBigBlock = 0;
-                try
-                    for x=1:app.nBigBlocksX
-                        for y=1:app.nBigBlocksY
-                            app.iBigBlock = app.iBigBlock + 1; %increment image patch counter for curent image
+                for x=1:app.nBigBlocksX
+                    for y=1:app.nBigBlocksY
+                        app.iBigBlock = app.iBigBlock + 1; %increment image patch counter for curent image
+                        fprintf("%s - %s %.0f %s%.0f %s%.0f%s%.0f%s\n",string(datetime),"Starting analysis of block #",app.iBigBlock, ...
+                            "of",app.nBigBlocks,"(",x,",",y,")")
+                        %----% compute block coordinates
+                        X1 = (bigBlockSize * (x-1)) + 1; %left
+                        X2 = X1 + bigBlockSize - 1; %right
 
-                            %----% compute block coordinates
-                            X1 = (bigBlockSize * (x-1)) + 1; %left
-                            X2 = X1 + bigBlockSize - 1; %right
-
-                            Y1 = (bigBlockSize * (y-1)) + 1; %top
-                            Y2 = Y1 + bigBlockSize - 1; %bottom
+                        Y1 = (bigBlockSize * (y-1)) + 1; %top
+                        Y2 = Y1 + bigBlockSize - 1; %bottom
 
 
-                            % make sure block coordinates are not out of range
-                            if(X2>X),X2=X;end %keep right edge in range
-                            if(Y2>Y),Y2=Y;end %keep bottom edge in range
-                            if(X1<1),X1=1;end %keep left edge in range
-                            if(Y1<1),Y1=1;end %keep top edge in range
-
-                            %----% get image block
+                        % make sure block coordinates are not out of range
+                        if(X2>X),X2=X;end %keep right edge in range
+                        if(Y2>Y),Y2=Y;end %keep bottom edge in range
+                        if(X1<1),X1=1;end %keep left edge in range
+                        if(Y1<1),Y1=1;end %keep top edge in range
+                        fprintf("%s - %s%.0f%s%.0f - %.0f %s %.0f - %.0f%s\n",string(datetime),"Coordinates of block #",app.iBigBlock,": (",X1,X2,"x",Y1,Y2,")")
+                        %----% get image block
+                        try
                             if app.SPLIT_IMAGE == true % low memory mode
                                 % read block from storage
+                                fprintf("%s - %s %s\n",string(datetime),"[Low memory mode]: Reading block from storage:",fullfile("ImageBlocksTemp",blockNames{x,y}))
                                 image_block = imread(fullfile("ImageBlocksTemp",blockNames{x,y})) ;
                             else % normal mode
                                 % extract block from whole image
+                                fprintf("%s - %s%.0f-%.0f %s %.0f-%.0f%s\n", string(datetime),"Extracting block from image (",X1,X2,"x",Y1,Y2,")")
                                 image_block = wholeImage(X1:X2,Y1:Y2,:);
                             end
+                        catch ME
+                            message_text = "GLASS-AI encountered an error during loading an image block during analysis." + ...
+                                newline + "[ERROR MESSAGE]" + newline + ME.message;
+                            uialert(app.GLASSAIUIFigure,message_text,"Analysis error")
+                            fprintf("%s - %s %.0f %s %.0f %s%.0f%s%.0f%s %s\n",string(datetime),"[ERROR]: There was an error loading the image data for block #",app.iBigBlock, ...
+                                "of",app.nBigBlocks,"(",x,",",y,") from", filename)
+                            %rethrow error to stop execution
+                            rethrow(ME);
 
-                            %----% do stain normalization if selected
+                        end
+
+
+                        %----% do stain normalization if selected
+                        try
                             if app.NORMALIZE_STAINS == true
                                 image_block = normalizeStaining(app, image_block);
-
                                 if app.SPLIT_IMAGE == true % low memory mode
                                     % store normalized image block
                                     imwrite(image_block,fullfile("NormBlocksTemp",sprintf("%d-%d.tif",x,y)),"tif");
@@ -340,20 +393,31 @@ classdef GLASS_AI_APP < matlab.apps.AppBase
                                     normalizedImage(X1:X2,Y1:Y2,:) = image_block;
                                 end
                             end
+                        catch ME
+                            message_text = "GLASS-AI encountered an error during stain normalization." + ...
+                                newline + "[ERROR MESSAGE]" + newline + ME.message;
+                            uialert(app.GLASSAIUIFigure,message_text,"Stain normalization error")
+                            fprintf("%s - %s %s %s%.0f\n",string(datetime),"[ERROR]: An error occured during stain normalization of",app.currentFileNameExt,"in block #",app.iBigBlock)
+                            %rethrow error to stop execution
+                            rethrow(ME);
+                        end
 
-                            %----% Grade the image and get the classifications
-                            %_Status Update_%
 
-                            app.analysisStepDescription = "Analyzing image";
-                            statusupdate(app);
-                            %%%%%%%%%%%%%%%%%
+                        %----% Grade the image and get the classifications
+                        %_Status Update_%
 
-                            % grade image block
-                            class_block = gradeimage(app,image_block,net);
+                        app.analysisStepDescription = "Analyzing image";
+                        statusupdate(app);
+                        %%%%%%%%%%%%%%%%%
 
-                            % set all pixels to 0 if returned block is
-                            % empty. Probably due to masking of all patches
-                            % in analysis block.
+                        % grade image block
+                        class_block = gradeimage(app,image_block,net);
+
+
+                        % set all pixels to 0 if returned block is
+                        % empty. Probably due to masking of all patches
+                        % in analysis block.
+                        try
                             if isempty(class_block)
                                 class_block = zeros(size(image_block,1:2));
                             end
@@ -361,21 +425,28 @@ classdef GLASS_AI_APP < matlab.apps.AppBase
                             if app.SPLIT_IMAGE == true % low memory mode
                                 % store classificiation block
                                 imwrite(class_block,fullfile("ClassBlocksTemp",sprintf("%d-%d.tif",x,y)),"tif");
+                                fprintf("%s - %s %s %s%.0f %s\n",string(datetime),"[Low memory mode]: Wrote classes for", app.currentFileNameExt,"block #",app.iBigBlock, "to disk")
+
                             else % normal mode
                                 % add classification block to full classification
                                 % matrix
                                 classifications(X1:X2,Y1:Y2) = class_block(1:(X2-X1)+1,1:(Y2-Y1)+1);
-                            end
+                                fprintf("%s - %s %s %s%.0f %s\n",string(datetime),"Stored classes for", app.currentFileNameExt,"block #",app.iBigBlock, "in classifications matrix")
 
-                        end % End FOR loop: nBigBlocksY
-                    end % End FOR loop: nBigBlocksX
-                catch ME
-                    message_text = "GLASS-AI encountered an error during analysis." + ...
-                        newline + "[ERROR MESSAGE]" + newline + ME.message;
-                    uialert(app.GLASSAIUIFigure,message_text,"Analysis error")
-                    %rethrow error to stop execution
-                    rethrow(ME);
-                end %end try/catch
+                            end
+                        catch ME
+                            message_text = "GLASS-AI encountered an error while storing image classifications." + ...
+                                newline + "[ERROR MESSAGE]" + newline + ME.message;
+                            uialert(app.GLASSAIUIFigure,message_text,"Analysis error")
+                            fprintf("%s - %s %s %s%.0f\n",string(datetime),"[ERROR]: An error occured during storage of classes from",app.currentFileNameExt,"block #",app.iBigBlock)
+
+                            %rethrow error to stop execution
+                            rethrow(ME);
+                        end
+                    end % End FOR loop: nBigBlocksY
+                end % End FOR loop: nBigBlocksX
+                fprintf("%s - %s %s\n",string(datetime),"Finished analysis of",app.currentFileNameExt)
+                fprintf("%s\n","%%%%%%%% Save outputs %%%%%%%%")
 
 
 
@@ -384,16 +455,26 @@ classdef GLASS_AI_APP < matlab.apps.AppBase
                 app.analysisStepDescription = "Saving pixel classifications";
                 statusupdate(app);
                 %%%%%%%%%%%%%%%%%
+                try
+                    classificationOutputFileName=fullfile(app.OUTPUT_PATH, strcat(app.currentFileName,'_classes.mat'));
 
-                classificationOutputFileName=fullfile(app.OUTPUT_PATH, strcat(filename,'_classes.mat'));
-
-                if app.SPLIT_IMAGE == true % low memory mode
-                    % rebuild classifications from storage blocks
-                    classifications = rebuildimagefromblockfiles(app,"ClassBlocksTemp",X,Y,1,blockNames,blockCoords);
-                    save(classificationOutputFileName,'classifications', '-v7.3');
-                    rmdir("ClassBlocksTemp",'s');
-                else % normal mode
-                    save(classificationOutputFileName,'classifications', '-v7.3');
+                    if app.SPLIT_IMAGE == true % low memory mode
+                        % rebuild classifications from storage blocks
+                        classifications = rebuildimagefromblockfiles(app,"ClassBlocksTemp",X,Y,1,blockNames,blockCoords);
+                        save(classificationOutputFileName,'classifications', '-v7.3');
+                        fprintf("%s - %s %s %s %s\n", string(datetime),"Saved classifications for",app.currentFileNameExt,"to",classificationOutputFileName)
+                        rmdir("ClassBlocksTemp",'s');
+                    else % normal mode
+                        save(classificationOutputFileName,'classifications', '-v7.3');
+                        fprintf("%s - %s %s %s %s\n", string(datetime),"Saved classifications for",app.currentFileNameExt,"to",classificationOutputFileName)
+                    end
+                catch ME
+                    message_text = "GLASS-AI encountered an error while saving image classifications." + ...
+                        newline + "[ERROR MESSAGE]" + newline + ME.message;
+                    uialert(app.GLASSAIUIFigure,message_text,"Analysis error")
+                    fprintf("%s - %s %s %s %s\n",string(datetime),"[ERROR]: An error occured during saving of classes for",app.currentFileNameExt,"to",classificationOutputFileName)
+                    %rethrow error to stop execution
+                    rethrow(ME);
                 end
 
 
@@ -410,6 +491,7 @@ classdef GLASS_AI_APP < matlab.apps.AppBase
                 statusupdate(app);
                 %%%%%%%%%%%%%%%%%
                 [G1,G2,G3,G4,AH,Normal,~,tumorMask] = extractclassmasks(app,classifications);
+                fprintf("%s - %s %s\n", string(datetime),"Extracted tumor masks for",app.currentFileNameExt)
 
 
                 % Analyze individual tumors and total tumor areas
@@ -417,8 +499,19 @@ classdef GLASS_AI_APP < matlab.apps.AppBase
                 app.analysisStepDescription = "Analyzing individual tumors";
                 statusupdate(app);
                 %%%%%%%%%%%%%%%%%
-                [individualTumorStat,wholeSlideStat,segmentedTumorMask]=individualtumoranalysis(app,G1,G2,G3,G4,tumorMask,AH,Normal,filename);
-                clear G1 G2 G3 G4 tumorMask AH Normal % remove from memory after processing
+                try
+                    [individualTumorStat,wholeSlideStat,segmentedTumorMask]=individualtumoranalysis(app,G1,G2,G3,G4,tumorMask,AH,Normal,app.currentFileName);
+                    clear G1 G2 G3 G4 tumorMask AH Normal % remove from memory after processing
+                    fprintf("%s - %s %s\n",string(datetime),"Finished individual tumor analysis on",app.currentFileNameExt)
+                catch ME
+                    message_text = "GLASS-AI encountered an error during individual tumor analysis." + ...
+                        newline + "[ERROR MESSAGE]" + newline + ME.message;
+                    uialert(app.GLASSAIUIFigure,message_text,"Analysis error")
+                    fprintf("%s - %s %s %s %s\n",string(datetime),"[ERROR]: An error occured during individual tumor analysis of",app.currentFileNameExt,"to",classificationOutputFileName)
+
+                    %rethrow error to stop execution
+                    rethrow(ME);
+                end
 
                 %--% Output Tables
 
@@ -429,9 +522,14 @@ classdef GLASS_AI_APP < matlab.apps.AppBase
                 statusupdate(app);
                 %%%%%%%%%%%%%%%%%
                 if app.iImage==1 && app.APPEND_SLIDE_SUMMARY==false
+                    if exist(fullfile(app.OUTPUT_PATH,'Whole slide summary.xlsx'), 'file')
+                        fprintf("%s - %s\n",string(datetime),"[NOTE]: Overwriting existing 'Whole slide summary.xlsx' file")
+                    end
                     writetable(wholeSlideStat,fullfile(app.OUTPUT_PATH,'Whole slide summary.xlsx'),'WriteMode','overwrite');
+                    fprintf("%s - %s %s %s %s\n", string(datetime),"Saved slide-level tumor stats for",app.currentFileNameExt,"to",classificationOutputFileName)
                 else
                     writetable(wholeSlideStat,fullfile(app.OUTPUT_PATH,'Whole slide summary.xlsx'),'WriteMode','append');
+                    fprintf("%s - %s %s %s %s\n", string(datetime),"Appended slide-level tumor stats for",app.currentFileNameExt,"to",classificationOutputFileName)
                 end
 
                 % Generate spreadsheet of individual tumors from each input image
@@ -439,8 +537,9 @@ classdef GLASS_AI_APP < matlab.apps.AppBase
                 app.analysisStepDescription = "Writing to individual tumor analysis file";
                 statusupdate(app);
                 %%%%%%%%%%%%%%%%%
-
-                writetable(individualTumorStat,fullfile(app.OUTPUT_PATH,[filename '.xlsx']),'WriteMode','overwrite');
+                individualTumorStatFileName = strcat(app.currentFileName, ".xlsx");
+                writetable(individualTumorStat,fullfile(app.OUTPUT_PATH,individualTumorStatFileName),'WriteMode','overwrite');
+                fprintf("%s - %s %s %s %s\n", string(datetime),"Saved individual tumor stats for",app.currentFileNameExt,"to",individualTumorStatFileName)
 
                 %--% Output Images
 
@@ -451,144 +550,230 @@ classdef GLASS_AI_APP < matlab.apps.AppBase
                 %%%%%%%%%%%%%%%%%
 
                 %---% make tumor grade image
-                gradeImage = createtumorgradeimage(app,classifications);
-                clear classifications; % clear classification matrix from memory
+                try
+                    gradeImage = createtumorgradeimage(app,classifications);
+                    fprintf("%s - %s %s\n", string(datetime),"Finished making tumor grade image for", app.currentFileNameExt)
+                    clear classifications; % clear classification matrix from memory
 
-                %---% resize grade image to set scaling factors
-                gradeImage = imresize(gradeImage, app.OUTPUT_GRADE_IMAGE_SCALE, 'nearest');
 
-                % save tumor grade image to file
-                if X*Y > 40000000 %write as tiled tiff for large images
-                    writetiff(app,gradeImage,filename+"_grades.tif");
-                else
-                    imwrite(gradeImage,fullfile(app.OUTPUT_PATH, ...
-                        strcat(filename,'_grades.tif')),'tif','Compression','lzw');
-                end
+                    %---% resize grade image to set scaling factors
+                    gradeImage = imresize(gradeImage, app.OUTPUT_GRADE_IMAGE_SCALE, 'nearest');
+                    fprintf("%s - %s %.2f%s\n", string(datetime),"Resized tumor grade image to", app.OUTPUT_GRADE_IMAGE_SCALE,"x")
 
-                if app.OUTPUT_IMAGE_PREVIEW == true
-                    %resize image for preview
-                    resizeX = min(X,5000);
-                    resizeY = min(Y,5000);
-                    gradeImage = imresize(gradeImage,[resizeX,resizeY],'nearest');
-                else
-                    clear gradeImage; % remove from memory after writing to file & if no preview
+                    % save tumor grade image to file
+                    tumorGradeImageFileName = strcat(app.currentFileName+"_grades.tif");
+                    if X*Y > 40000000 %write as tiled tiff for large images
+                        writetiff(app,gradeImage,tumorGradeImageFileName);
+                        fprintf("%s - %s %s %s %s %s\n", string(datetime),"Saved tumor grade image for", app.currentFileNameExt, "to",tumorGradeImageFileName,"using writetiff")
+
+                    else
+                        imwrite(gradeImage,fullfile(app.OUTPUT_PATH, ...
+                            strcat(app.currentFileName,'_grades.tif')),'tif','Compression','lzw');
+                        fprintf("%s - %s %s %s %s %s\n", string(datetime),"Saved tumor grade image for", app.currentFileNameExt, "to",tumorGradeImageFileName,"using imwrite with LZW compression")
+
+                    end
+
+                    if app.OUTPUT_IMAGE_PREVIEW == true
+                        %resize image for preview
+                        resizeX = min(X,5000);
+                        resizeY = min(Y,5000);
+                        gradeImage = imresize(gradeImage,[resizeX,resizeY],'nearest');
+                        fprintf("%s - %s %.0f%s%.0f %s\n", string(datetime),"Resized tumor grade image to", resizeX,"x",resizeY, "for output preview")
+
+                    else
+                        clear gradeImage; % remove from memory after writing to file & if no preview
+                    end
+                catch ME
+                    message_text = "GLASS-AI encountered an error during tumor grade image creation." + ...
+                        newline + "[ERROR MESSAGE]" + newline + ME.message;
+                    uialert(app.GLASSAIUIFigure,message_text,"Analysis error")
+                    fprintf("%s - %s %s %s\n",string(datetime),"[ERROR]: An error occured during tumor grade image creation for",app.currentFileNameExt)
+
+                    %rethrow error to stop execution
+                    rethrow(ME);
                 end
 
                 %---% make tumor segmentation image
                 if app.MAKE_SEGMENTATION_IMAGE == true
-                    %use stain normalized image if made
-                    if app.NORMALIZE_STAINS == true
-                        if app.SPLIT_IMAGE == true % low memory mode
-                            %rebuild image if split
-                            normalizedImage = rebuildimagefromblockfiles(app,"NormBlocksTemp", X, Y, Z, blockNames, blockCoords);
+                    try
+                        %use stain normalized image if made
+                        if app.NORMALIZE_STAINS == true
+                            if app.SPLIT_IMAGE == true % low memory mode
+                                %rebuild image if split
+                                normalizedImage = rebuildimagefromblockfiles(app,"NormBlocksTemp", X, Y, Z, blockNames, blockCoords);
+                            end
+                            normalizedImage = im2uint8(normalizedImage);
+                            segmentationImage = createsegmentationimage(app,normalizedImage, segmentedTumorMask, individualTumorStat);
+                            fprintf("%s - %s %s\n", string(datetime),"Finished making tumor segmentation image for", app.currentFileNameExt)
+
+                        else % if normalization was not performed
+                            if app.SPLIT_IMAGE == true % low memory mode
+                                %reload origininal image from file
+                                [wholeImage] = readimage(app,app.currentFilePath);
+                                fprintf("%s - %s %s\n", string(datetime),"[Low memory mode]: Reloaded original H&E image from", app.currentFileNameExt)
+                            end
+                            wholeImage = im2uint8(wholeImage);
+                            segmentationImage = createsegmentationimage(app, wholeImage, segmentedTumorMask, individualTumorStat);
+                            fprintf("%s - %s %s\n", string(datetime),"Finished making tumor segmentation image for", app.currentFileNameExt)
+
                         end
-                        normalizedImage = im2uint8(normalizedImage);
-                        segmentationImage = createsegmentationimage(app,normalizedImage, segmentedTumorMask, individualTumorStat);
 
-                    else % if normalization was not performed
-                        if app.SPLIT_IMAGE == true % low memory mode
-                            %reload origininal image from file
-                            [wholeImage] = readimage(app,filePath);
+                        % segmentation image is resized during creation to
+                        % prevent compression of tumor ID labels
+
+                        % save tumor segmentation image to file
+                        segmentationImageFileName = strcat(app.currentFileName+"_segmentation.tif");
+                        if X*Y > 40000000 %write as tiled tiff for large images
+                            writetiff(app,segmentationImage,segmentationImageFileName);
+                            fprintf("%s - %s %s %s %s %s\n", string(datetime),"Saved tumor segmentation image for", app.currentFileNameExt, "to",segmentationImageFileName,"using writetiff")
+                        else
+                            imwrite(segmentationImage,fullfile(app.OUTPUT_PATH, ...
+                                segmentationImageFileName),'tif','Compression','lzw');
+                            fprintf("%s - %s %s %s %s %s\n", string(datetime),"Saved tumor segmentation image for", app.currentFileNameExt, "to",segmentationImageFileName,"using imwrite with LZW compression")
                         end
-                        wholeImage = im2uint8(wholeImage);
-                        segmentationImage = createsegmentationimage(app, wholeImage, segmentedTumorMask, individualTumorStat);
-                    end
 
-                    % segmentation image is resized during creation to
-                    % prevent compression of tumor ID labels
+                        %resize image for preview
+                        if app.OUTPUT_IMAGE_PREVIEW == true
+                            segmentationImage = imresize(segmentationImage, [resizeX resizeY],'nearest');
+                            fprintf("%s - %s %.0f%s%.0f %s\n", string(datetime),"Resized tumor segmentation image to", resizeX,"x",resizeY, "for output preview")
 
-                    % save tumor segmentation image to file
-                    if X*Y > 40000000 %write as tiled tiff for large images
-                        writetiff(app,segmentationImage,filename+"_segmentation.tif");
-                    else
-                        imwrite(segmentationImage,fullfile(app.OUTPUT_PATH, ...
-                            strcat(filename,'_segmentation.tif')),'tif','Compression','lzw');
-                    end
+                        else
+                            clear segmentationImage; % remove from memory after writing to file & if no preview
+                        end
+                    catch ME
+                        message_text = "GLASS-AI encountered an error during tumor segmentation image creation." + ...
+                            newline + "[ERROR MESSAGE]" + newline + ME.message;
+                        uialert(app.GLASSAIUIFigure,message_text,"Analysis error")
+                        fprintf("%s - %s %s %s\n",string(datetime),"[ERROR]: An error occured during tumor segmentation image creation for",app.currentFileNameExt)
 
-                    %resize image for preview
-                    if app.OUTPUT_IMAGE_PREVIEW == true
-                        segmentationImage = imresize(segmentationImage, [resizeX resizeY],'nearest');
-                    else
-                        clear segmentationImage; % remove from memory after writing to file & if no preview
+                        %rethrow error to stop execution
+                        rethrow(ME);
                     end
                 end
 
                 %---% make stain normalization image
                 if app.NORMALIZE_STAINS == true
+                    normalizedImageFileName = strcat(app.currentFileName+"_normalized.tif");
                     %---% resize segmentation image to set scaling factors
-                    normalizedImage = imresize(normalizedImage,app.OUTPUT_NORMALIZED_IMAGE_SCALE,"nearest");
-                    if X*Y > 40000000 %write as tiled tiff for large images
-                        writetiff(app,normalizedImage,filename+"_normalized.tif");
-                    else
-                        imwrite(normalizedImage,fullfile(app.OUTPUT_PATH, ...
-                            strcat(filename,'_normalized.tif')),'tif','Compression','lzw'); % save normalized stain image to file
-                    end
-                    %resize image for preview
-                    if app.OUTPUT_IMAGE_PREVIEW == true
-                        normalizedImage = imresize(normalizedImage, [resizeX resizeY],'nearest');
-                    else
-                        clear normalizedImage;
-                    end
+                    try
+                        normalizedImage = imresize(normalizedImage,app.OUTPUT_NORMALIZED_IMAGE_SCALE,"nearest");
+                        fprintf("%s - %s %.2f%s\n", string(datetime),"Resized normalized H&E image to", app.OUTPUT_NORMALIZED_IMAGE_SCALE,"x")
 
+                        if X*Y > 40000000 %write as tiled tiff for large images
+                            writetiff(app,normalizedImage,normalizedImageFileName);
+                            fprintf("%s - %s %s %s %s %s\n", string(datetime),"Saved normalized H&E image for", app.currentFileNameExt, "to",normalizedImageFileName,"using writetiff")
+
+                        else
+                            imwrite(normalizedImage,fullfile(app.OUTPUT_PATH, ...
+                                normalizedImageFileName),'tif','Compression','lzw'); % save normalized stain image to file
+                            fprintf("%s - %s %s %s %s %s\n", string(datetime),"Saved normalized H&E image for", app.currentFileNameExt, "to",normalizedImageFileName,"using imwrite with LZW compression")
+
+                        end
+                        %resize image for preview
+                        if app.OUTPUT_IMAGE_PREVIEW == true
+                            normalizedImage = imresize(normalizedImage, [resizeX resizeY],'nearest');
+                            fprintf("%s - %s %.0f%s%.0f %s\n", string(datetime),"Resized normalized H&E image to", resizeX,"x",resizeY, "for output preview")
+
+                        else
+                            clear normalizedImage;
+                        end
+                    catch ME
+                        message_text = "GLASS-AI encountered an error during stain normalized image creation." + ...
+                            newline + "[ERROR MESSAGE]" + newline + ME.message;
+                        uialert(app.GLASSAIUIFigure,message_text,"Analysis error")
+                        fprintf("%s - %s %s %s\n",string(datetime),"[ERROR]: An error occured during normalized H&E image output for",app.currentFileNameExt)
+
+                        %rethrow error to stop execution
+                        rethrow(ME);
+                    end
 
                 end
 
                 % Generate output image preview
                 if app.OUTPUT_IMAGE_PREVIEW == true
-
-                    %_Status Update_%
-                    app.analysisStepDescription = "Generating preview images";
-                    statusupdate(app);
-                    %%%%%%%%%%%%%%%%
-
-                    %% display preview images
-                    % set up figure environement for 2x2 image display
-                    fig = figure();
-                    tlo = tiledlayout(fig,2,2,'TileSpacing','Compact');
-
-                    %show original image
-                    ax1 = nexttile(tlo);
-                    imshow(wholeImage,'Parent',ax1);
-                    title("Original Image");
-
-                    %show stain normalized image if done
-                    if app.NORMALIZE_STAINS == true
-                        ax2 = nexttile(tlo);
-                        imshow(normalizedImage,'Parent',ax2);
-                        title("Normalized Image");
-                    end
-
-                    %show tumor grade map
-                    ax3 = nexttile(tlo);
-                    imshow(gradeImage, 'Parent', ax3);
-                    title("Tumor Grades");
-
-                    %show tumor segmentation map
-                    if app.MAKE_SEGMENTATION_IMAGE == true
-                        ax4 = nexttile(tlo);
-                        imshow(segmentationImage,'Parent',ax4);
-                        title("Tumor Segmentation");
-                    end
-                    % synchronize subplots of image viewer
-                    if app.MAKE_SEGMENTATION_IMAGE == true
-                        if app.NORMALIZE_STAINS == true
-                            linkaxes([ax1 ax2 ax3 ax4],'xy');
-                        else
-                            linkaxes([ax1 ax3 ax4],'xy');
+                    fprintf("%s - %s %s\n", string(datetime),"Creating output image preview for",app.currentFileNameExt);
+                    try
+                        %_Status Update_%
+                        app.analysisStepDescription = "Generating preview images";
+                        statusupdate(app);
+                        %%%%%%%%%%%%%%%%
+                        %make sure orignial image is loaded for display and
+                        %resize to preview size if needed
+                        if ~exist("wholeImage","var")
+                            [wholeImage] = readimage(app,app.currentFilePath);
+                            fprintf("%s - %s %s",string(datetime),"Reloaded original H&E image for",app.currentFileNameExt)
                         end
-                    else
-                        if app.NORMALIZE_STAINS == true
-                            linkaxes([ax1 ax2 ax3],'xy');
-                        else
-                            linkaxes([ax1 ax3],'xy');
-                        end
-                    end
+                        wholeImage = imresize(wholeImage,[resizeX resizeY],'nearest');
+                        fprintf("%s - %s %.2f%s\n", string(datetime),"Resized normalized H&E image to", app.OUTPUT_NORMALIZED_IMAGE_SCALE,"x")
 
+
+                        %% display preview images
+                        % set up figure environement for 2x2 image display
+                        fig = figure();
+                        tlo = tiledlayout(fig,2,2,'TileSpacing','Compact');
+
+                        %show original image
+                        ax1 = nexttile(tlo);
+                        imshow(wholeImage,'Parent',ax1);
+                        title("Original Image");
+                        fprintf("%s - %s %s\n", string(datetime),"Added original H&E image to preview for",app.currentFileNameExt);
+
+                        %show stain normalized image if done
+                        if app.NORMALIZE_STAINS == true
+                            ax2 = nexttile(tlo);
+                            imshow(normalizedImage,'Parent',ax2);
+                            title("Normalized Image");
+                            fprintf("%s - %s %s\n", string(datetime),"Added normalized H&E image to preview for",app.currentFileNameExt);
+
+                        end
+
+                        %show tumor grade map
+                        ax3 = nexttile(tlo);
+                        imshow(gradeImage, 'Parent', ax3);
+                        title("Tumor Grades");
+                        fprintf("%s - %s %s\n", string(datetime),"Added tumor grade image to preview for",app.currentFileNameExt);
+
+
+                        %show tumor segmentation map
+                        if app.MAKE_SEGMENTATION_IMAGE == true
+                            ax4 = nexttile(tlo);
+                            imshow(segmentationImage,'Parent',ax4);
+                            title("Tumor Segmentation");
+                            fprintf("%s - %s %s\n", string(datetime),"Added tumor segmentation image to preview for",app.currentFileNameExt);
+
+                        end
+                        % synchronize subplots of image viewer
+                        if app.MAKE_SEGMENTATION_IMAGE == true
+                            if app.NORMALIZE_STAINS == true
+                                linkaxes([ax1 ax2 ax3 ax4],'xy');
+                            else
+                                linkaxes([ax1 ax3 ax4],'xy');
+                            end
+                        else
+                            if app.NORMALIZE_STAINS == true
+                                linkaxes([ax1 ax2 ax3],'xy');
+                            else
+                                linkaxes([ax1 ax3],'xy');
+                            end
+                        end
+                    catch ME
+                        message_text = "GLASS-AI encountered an error while making image previews." + ...
+                            newline + "[ERROR MESSAGE]" + newline + ME.message;
+                        uialert(app.GLASSAIUIFigure,message_text,"Analysis error")
+                        fprintf("%s - %s %s %s\n",string(datetime),"[ERROR]: An error occured while making output image preview figure for",app.currentFileNameExt)
+
+                        %rethrow error to stop execution
+                        rethrow(ME);
+                    end
                 end % End image preview
+
 
                 %--% Cleanup Workspace
                 % Clean up before next iteration
+                fprintf("%s - %s %s\n", string(datetime),"Deleting variables created for analysis of",app.currentFileNameExt)
                 clearvars -except app net;
+                fprintf("%s - %s %s\n", string(datetime),"Completed analysis and output of",app.currentFileNameExt)
+                fprintf("%s %0.0f %s\n","----- End image",app.iImage,"-----")
             end
 
             %--% Finish Analysis Run
@@ -638,18 +823,24 @@ classdef GLASS_AI_APP < matlab.apps.AppBase
             %   Supported formats: tif , svs
 
             % get image extension
-            [~,~,ext] = fileparts(filePath);
+            [~,fileName,ext] = fileparts(filePath);
 
 
             if strcmpi(ext,'.tif')
                 % Read tif file. Assumed to be in 20x magnification
                 % with a 0.502 microns/pixel resolution
+                fprintf("%s - %s %s %s\n",string(datetime),fileName,"is a",ext)
                 wholeImage=imread(filePath);
                 app.IMAGE_RESOLUTION = 0.502;
+                fprintf("%s - %s %s %.3f %s\n",string(datetime),fileName,"is assumed to have a resolution of", ...
+                    app.IMAGE_RESOLUTION,"microns per pixel")
+
             elseif strcmpi(ext,'.svs')
+                fprintf("%s - %s %s %s\n",string(datetime),fileName,"is a",ext)
                 % read svs file.
                 [wholeImage]=readsvsfile(app,filePath);
             else
+                fprintf("%s - %s %s\n",string(datetime),fileName,"is not a supported file format")
                 error('File format is not supported!!');
             end
 
@@ -657,7 +848,6 @@ classdef GLASS_AI_APP < matlab.apps.AppBase
 
         function [wholeImage]=readsvsfile(app,filePath)
             % reads and returns the largest 20x image from the svs file
-
             [imageInfo] = getimageinfo(app,filePath);
 
             % find the 20x images
@@ -666,8 +856,10 @@ classdef GLASS_AI_APP < matlab.apps.AppBase
             if ~isempty(pos)
                 % find the largest 20x image
                 idx=pos(end); % array is sorted by image size already
+                fprintf("%s - %s %f %s %s\n", string(datetime), "Located 20x image in layer",idx, "of", filePath)
                 wholeImage=imread(filePath,'Index',imageInfo(idx,3));
             else
+                fprintf("%s - %s %s\n", string(datetime), "Unable to locate 20x image in", filePath)
                 error('Could not find 20x images in the svs file!');
             end
 
@@ -679,12 +871,17 @@ classdef GLASS_AI_APP < matlab.apps.AppBase
 
             I1info=imfinfo(path);
             imageNo=size(I1info,1); %number of images in svs file
+            fprintf("%s - %s %.0f %s %s\n",string(datetime),"Found", imageNo,"images in ",path)
             imageInfo=zeros(imageNo,5); %initialize imageInfo to zeros
             for i=1:imageNo
                 % Get image size
+
                 imageInfo(i,1)=I1info(i).Width;
+                fprintf("%s%.0f %s %.0f\n","Image #",i,"Width:",I1info(i).Width)
                 imageInfo(i,2)=I1info(i).Height;
+                fprintf("%s%.0f %s %.0f\n","Image #",i,"Height:",I1info(i).Height)
                 imageInfo(i,3)=i;
+                fprintf("%s%.0f %s %.0f\n","Image #",i,"Index:",i)
 
                 % Get image magnification and resolutions
                 try
@@ -695,8 +892,10 @@ classdef GLASS_AI_APP < matlab.apps.AppBase
                         C3=strsplit(C2{1},'=');
                         app.IMAGE_RESOLUTION=str2double(C3{2});
                         imageInfo(i,4)=app.IMAGE_RESOLUTION;
+                        fprintf("%s%.0f %s %.0f\n","Image #",i,"Resolution:",app.IMAGE_RESOLUTION)
                     else
                         imageInfo(i,4)=NaN;
+                        fprintf("%s%.0f %s %.0f\n","Image #",i,"Resolution:",NaN)
                     end
 
                     C2=C(contains(C,'AppMag')); %magnification
@@ -704,14 +903,20 @@ classdef GLASS_AI_APP < matlab.apps.AppBase
                         C3=strsplit(C2{1},'=');
                         imageMagnification=str2double(C3{2});
                         imageInfo(i,5)=imageMagnification;
+                        fprintf("%s%.0f %s %.0f","Image #",i,"Magnification:",imageMagnification)
                     else
                         imageInfo(i,5)=NaN;
+                        fprintf("%s%.0f %s %.0f","Image #",i,"Magnification:",NaN)
                     end
                 catch
                     imageInfo(i,4)=NaN;
+                    fprintf("%s%.0f %s %.0f","Image #",i,"Resolution:",NaN)
                     imageInfo(i,5)=NaN;
+                    fprintf("%s%.0f %s %.0f","Image #",i,"Resolution:",NaN)
                 end
             end
+            %fill in missing magnfications for pyrimidal layers
+            imageInfo = estimateMagnifications(app,imageInfo);
             imageInfo = sortrows(imageInfo);
 
         end % End function: getimageinfo
@@ -724,7 +929,7 @@ classdef GLASS_AI_APP < matlab.apps.AppBase
 
             blockNames =  cell(app.nBigBlocksX, app.nBigBlocksY);
             blockCoords = cell(app.nBigBlocksX, app.nBigBlocksY);
-
+            fprintf("%s - %s %s %s\n",string(datetime),"Low memory mode: splitting",app.currentFileExt, "into image blocks")
             for x=1:app.nBigBlocksX
                 for y=1:app.nBigBlocksY
 
@@ -757,31 +962,50 @@ classdef GLASS_AI_APP < matlab.apps.AppBase
             %   memory issues).
             %   Returns a matrix of classification for each pixel in the image
 
+            fprintf("%s - %s %s %s%.0f\n",string(datetime),"Starting grading of",app.currentFileNameExt,"block #",app.iBigBlock)
             % Define patch size for analysis
             patchSize = [224,224,3];
 
             % Get dimensions of image
             [X,Y,~]=size(imageBlock);
-
+            fprintf("%s - %s%.0f %s%.0f %s %.0f%s\n",string(datetime),"Dimensions of block #",app.iBigBlock,"(",X,"x",Y,")")
             % If image block is too small, pad bottom and right sides with
             % white space
             if X < 224
                 X_pad = 224-X;
-            else
-                X_pad = 0;
+                %pad columns with white pixels
+                X_padarray = zeros([X_pad Y 3])+255;
+                imageBlock = [imageBlock; X_padarray];
+                fprintf("%s - %s%.0f %.0f %s\n",string(datetime),"[NOTE]: Padding block #",app.iBigBlock, X_pad, "pixels on the right")
             end
 
             if Y < 224
                 Y_pad = 224-Y;
-            else
-                Y_pad = 0;
-
+                %pad rows with white pixels
+                Y_padarray = zeros([224 Y_pad 3])+255;
+                imageBlock = [imageBlock Y_padarray];
+                fprintf("%s - %s%.0f %.0f %s\n",string(datetime),"[NOTE]: Padding block #",app.iBigBlock, Y_pad, "pixels on the bottom")
             end
 
-            imageBlock = padarray(imageBlock,[X_pad, Y_pad],255,'post');
+
+            %had to remove paddarray call because the Image Processing
+            %Toolbox was not being packaged into the compiled application.
+            %%imageBlock = padarray(imageBlock,[X_pad, Y_pad],255,'post');
+
 
             % create image patches from input imageBlock
-            bim = blockedImage(imageBlock);
+            try
+                fprintf("%s - %s %s %s%.0f\n",string(datetime),"Making blockedimage for",app.currentFileNameExt,"block #",app.iBigBlock)
+                bim = blockedImage(imageBlock);
+            catch ME
+                message_text = "GLASS-AI encountered an error during imageBlock creation." + ...
+                    newline + "[ERROR MESSAGE]" + newline + ME.message;
+                uialert(app.GLASSAIUIFigure,message_text,"Analysis error")
+                fprintf("%s - %s %s %s%.0f\n",string(datetime),"[ERROR]: An error occured with making the blockedimage for",app.currentFileNameExt,"block #",app.iBigBlock)
+                %rethrow error to stop execution
+                rethrow(ME);
+            end
+
 
 
             % Remove existing TempFolder
@@ -802,35 +1026,82 @@ classdef GLASS_AI_APP < matlab.apps.AppBase
 
 
             %mask image to skip empty space
-            if app.PATCH_SKIP_THRESHOLD > 0
-                bmask = apply(bim, @(bs)rgb2gray(bs.Data)<120, "Level",1);
-                bls = selectBlockLocations(bim,'BlockSize',patchSize(1:2),...
-                    "Mask", bmask,"InclusionThreshold", app.PATCH_SKIP_THRESHOLD/100);
-            else %skip masking if no threshold set
-                bls = selectBlockLocations(bim,'BlockSize',patchSize(1:2),...
-                    'InclusionThreshold',0,'Levels',1);
+            try
+                if app.PATCH_SKIP_THRESHOLD > 0
+                    try
+                        fprintf("%s - %s %s %s%.0f\n",string(datetime),"Making empty patch mask for",app.currentFileNameExt,"block #",app.iBigBlock)
+                        bmask = apply(bim, @(bs)rgb2gray(bs.Data)<120, "Level",1);
+                        bls = selectBlockLocations(bim,'BlockSize',patchSize(1:2),...
+                            "Mask", bmask,"InclusionThreshold", app.PATCH_SKIP_THRESHOLD/100);
+                        fprintf("%s - %s %s %s%.0f\n",string(datetime),"Selecting non-empty patches in",app.currentFileNameExt,"block #",app.iBigBlock)
+                    catch 
+                        %skip masking if failed
+                        fprintf("%s - %s %s %s%.0f\n",string(datetime),"[NOTE]: Empty patch masking failed in ",app.currentFileNameExt,"block #",app.iBigBlock)
+                        bls = selectBlockLocations(bim,'BlockSize',patchSize(1:2),...
+                            'InclusionThreshold',0,'Levels',1);
+                        fprintf("%s - %s %s %s%.0f\n",string(datetime),"Making patches for",app.currentFileNameExt,"block #",app.iBigBlock)
+                        if app.SkipPatchFailed == 0
+                            message_text = "GLASS-AI encountered an error due to empty patch skipping." + ...
+                                newline + "Empty patches were not skipped in at least one analysis block in this run." +...
+                                newline + "This will not affect the results, but analysis may take a little longer.";
+                            uialert(app.GLASSAIUIFigure,message_text,"Analysis alert", "Icon", "info")
+                            app.SkipPatchFailed = 1;
+                            fprintf("%s - %s\n",string(datetime),"[NOTE]: Alerted user the patch skipping failed")
+                        end
+                    end
+
+                else %skip masking if no threshold set
+                    bls = selectBlockLocations(bim,'BlockSize',patchSize(1:2),...
+                        'InclusionThreshold',0,'Levels',1);
+                    fprintf("%s - %s %s %s%.0f\n",string(datetime),"Making patches for",app.currentFileNameExt,"block #",app.iBigBlock)
+                end
+            catch ME
+                message_text = "GLASS-AI encountered making patches in analysis blocks." + ...
+                    newline + "If this error persits, try reinstalling GLASS-AI."+...
+                    newline + "[ERROR MESSAGE]" + newline + ME.message;
+                uialert(app.GLASSAIUIFigure,message_text,"Analysis error");
+                fprintf("%s - %s %s %s%.0f\n",string(datetime),"[ERROR]: An error curred while making patches for",app.currentFileNameExt,"block #",app.iBigBlock)
+                %rethrow error to halt execution
+                rethrow(ME);
             end
 
             %classify image patches
-            [scores1] = apply(bim,@(bs)classifypatches(app,bs, net), ...
-                'Level',1,'BlockLocationSet', bls,...
-                'UseParallel',canUseGPU,'OutputLocation','TempFolder');
+            try
+                %if all of the patches are skipped fill score with 0
+                if max(size(bls.ImageNumber)) == 0
+                    scores  = zeros(size(imageBlock));
+                    fprintf("%s - %s%.0f %s\n", string(datetime),"[NOTE]: All patches in block #",app.iBigBlock, "were skipped")
+                else
+                    fprintf("%s - %s %s %s%.0f\n",string(datetime),"Starting analysis of", app.currentFileNameExt,"block #",app.iBigBlock)
+                    [scores1] = apply(bim,@(bs)classifypatches(app,bs, net), ...
+                        'Level',1,'BlockLocationSet', bls,...
+                        'UseParallel',canUseGPU,'OutputLocation','TempFolder');
+                    %collect output classifications
+                    scores = gather(scores1);
+                    fprintf("%s - %s %s %s%.0f\n",string(datetime),"Finished analysis of", app.currentFileNameExt,"block #",app.iBigBlock)
+                end
+            catch ME
+                message_text = "GLASS-AI encountered an error during patch classification." + ...
+                    newline + "[ERROR MESSAGE]" + newline + ME.message;
+                uialert(app.GLASSAIUIFigure,message_text,"Analysis error")
+                fprintf("%s - %s %s %s%.0f\n",string(datetime),"[ERROR]: An error curred while classfying patches in",app.currentFileNameExt,"block #",app.iBigBlock)
+                %rethrow error to stop execution
+                rethrow(ME);
+            end
 
-            %collect output classifications
-            scores = gather(scores1);
 
             % clean temp folder
             if exist('TempFolder', 'dir'), rmdir('TempFolder', 's'); end
 
             % save patch classifications to the classification matrix
             [M, Inds]=(max(scores,[],3));
-
             % Set skipped patches to black
             Inds(M==0) = 0;
             Inds = uint8(Inds);
 
             % Smooth classifications to remove patch edge artifacts
             if app.SMOOTH_METHOD ~= "None"
+
                 [Inds] = smoothclasses(app,Inds);
             end
 
@@ -849,7 +1120,21 @@ classdef GLASS_AI_APP < matlab.apps.AppBase
             % white space
             X_pad = 224-X;
             Y_pad = 224-Y;
-            I = padarray(I,[X_pad, Y_pad, 0],255,'post');
+            if X < 224
+                %pad columns with white pixels
+                X_padarray = zeros([X_pad Y 3])+255;
+                I = [I; X_padarray];
+            end
+
+            if Y < 224
+                %pad rows with white pixels
+                Y_padarray = zeros([224 Y_pad 3])+255;
+                I = [I Y_padarray];
+            end
+
+            %had to remove paddarray call because the Image Processing
+            %Toolbox was not being packaged into the compiled application.
+            %I = padarray(I,[X_pad, Y_pad, 0],255,'post');
 
             % Predict grades
             [~,~,scores] = semanticseg(I, net);
@@ -880,8 +1165,8 @@ classdef GLASS_AI_APP < matlab.apps.AppBase
             % Applies a smoothing kernel across predicted classes to
             % minimize artifcats from patch edges.
 
+
             tumorClasses = classes;
-            assignin("base","classes",classes);
             % treat masked pixels as background
             tumorClasses(classes == 0) = 7;
 
@@ -889,13 +1174,14 @@ classdef GLASS_AI_APP < matlab.apps.AppBase
             switch app.SMOOTH_METHOD
                 case "Median"
                     smoothedClasses = medfilt2(tumorClasses,app.SMOOTH_SIZE,'symmetric');
-
+                    fprintf("%s - %s %s %s%.0f\n",string(datetime),"Performing median smoothing on tumor classes in",app.currentFileNameExt,"block #",app.iBigBlock)
                 case "Mode"
                     % make sure smoothing kernel is odd length
                     if any(mod(app.SMOOTH_SIZE,2)==0)
                         app.SMOOTH_SIZE = app.SMOOTH_SIZE + (mod(app.SMOOTH_SIZE,2)-1);
                     end
                     smoothedClasses = modefilt(tumorClasses,app.SMOOTH_SIZE,'symmetric');
+                    fprintf("%s - %s %s %s%.0f\n",string(datetime),"Performing mode smoothing on tumor classes in",app.currentFileNameExt,"block #",app.iBigBlock)
 
                 case "Bilateral"
                     % make sure smoothing kernel is odd length
@@ -903,14 +1189,14 @@ classdef GLASS_AI_APP < matlab.apps.AppBase
                         app.SMOOTH_SIZE = app.SMOOTH_SIZE + (mod(app.SMOOTH_SIZE,2)-1);
                     end
                     smoothedClasses = imbilatfilt(tumorClasses,10,floor((app.SMOOTH_SIZE(1)/2)/2));
-
+                    fprintf("%s - %s %s %s%.0f\n",string(datetime),"Performing bilateral smoothing on tumor classes in",app.currentFileNameExt,"block #",app.iBigBlock)
                 case "Non-local means"
                     % make sure smoothing kernel is odd length
                     if any(mod(app.SMOOTH_SIZE,2)==0)
                         app.SMOOTH_SIZE = app.SMOOTH_SIZE + (mod(app.SMOOTH_SIZE,2)-1);
                     end
                     smoothedClasses = imnlmfilt(tumorClasses,SearchWindowSize = app.SMOOTH_SIZE(1));
-
+                    fprintf("%s - %s %s %s%.0f\n",string(datetime),"Performing non-local means smoothing on tumor classes in",app.currentFileNameExt,"block #",app.iBigBlock)
                 case "Hamming window (tumor only)"
                     %convert classifications to double since uint8 cant store
                     %NaN values
@@ -919,9 +1205,10 @@ classdef GLASS_AI_APP < matlab.apps.AppBase
                     tumorClasses(tumorClasses == 5| tumorClasses == 6| tumorClasses == 7) = NaN;
                     window = hammingwindow(app);
                     smoothedClasses = applysmoothingwindow(app,window,tumorClasses);
-
+                    fprintf("%s - %s %s %s%.0f\n",string(datetime),"Performing Hamming window smoothing on tumor classes in",app.currentFileNameExt,"block #",app.iBigBlock)
                 case "None"
                     smoothedClasses = classes;
+                    fprintf("%s - %s %s %s%.0f\n",string(datetime),"Skipping smoothing on tumor classes in",app.currentFileNameExt,"block #",app.iBigBlock)
             end
 
 
@@ -932,14 +1219,17 @@ classdef GLASS_AI_APP < matlab.apps.AppBase
             %restore any alveoli that were lost during smoothing
             restoreAlveoliInds = (classes == 5) & ~smoothedTumorInds;
             smoothedClasses(restoreAlveoliInds) = 5;
-
+            fprintf("%s - %s %s %s%.0f\n",string(datetime),"Restoring normal alveoli pixels in",app.currentFileNameExt,"block #",app.iBigBlock)
             %restore any airways that were lost during smoothing
             restoreAirwayInds = (classes == 6) & ~smoothedTumorInds;
             smoothedClasses(restoreAirwayInds) = 6;
+            fprintf("%s - %s %s %s%.0f\n",string(datetime),"Restoring normal airway pixels in",app.currentFileNameExt,"block #",app.iBigBlock)
+
 
             %restore background and masked pixels
             smoothedClasses(classes == 0) = 0;
             smoothedClasses(classes == 7) = 7;
+            fprintf("%s - %s %s %s%.0f\n",string(datetime),"Restoring background and skipped pixels in",app.currentFileNameExt,"block #",app.iBigBlock)
 
         end % End function: smoothclasses
 
@@ -948,6 +1238,7 @@ classdef GLASS_AI_APP < matlab.apps.AppBase
             % Performs merging, segmentation, and filtering
             % of individual tumors. Provides data for output tables
             % and images.
+            fprintf("%s - %s %s\n",string(datetime),"Beginning individual tumor analysis on",app.currentFileNameExt)
 
             PIXEL_AREA=app.IMAGE_RESOLUTION^2;
             MERGE_RADIUS = ceil(app.TUMOR_MERGE_RADIUS / app.IMAGE_RESOLUTION); % convert microns to pixels
@@ -958,8 +1249,10 @@ classdef GLASS_AI_APP < matlab.apps.AppBase
             tumorMask=imclose(tumorMask,strel('disk',MERGE_RADIUS));
             tumorMask=imfill(tumorMask,'holes'); % fill new holes
 
+
             % Filter tumors smaller than app.TUMOR_SIZE_THRESHOLD
             segmentedTumorMask=bwareaopen(tumorMask,SIZE_THRESHOLD,8);
+            fprintf("%s - %s %s\n",string(datetime),"Segmented individual tumors in",app.currentFileNameExt)
 
             % mask of all tissue in slide
             Slide_Mask=tumorMask|AH|Normal;
@@ -980,6 +1273,7 @@ classdef GLASS_AI_APP < matlab.apps.AppBase
             CC = bwconncomp(segmentedTumorMask,8); % Segment individual tumors
             s = regionprops(CC,'Centroid'); % Get centroid coordinates for tumor labels
             tumorCentroids = cat(1,s.Centroid); % Convert centroid coordinates to [x y] matrix
+            fprintf("%s - %s %.0f %s %s\n",string(datetime),"Calculated tumor centroids for", length(tumorCentroids),"tumors in", app.currentFileNameExt)
 
             %% Define tables to save stats
             % Whole slide summary table
@@ -996,6 +1290,7 @@ classdef GLASS_AI_APP < matlab.apps.AppBase
 
             %add stats if any tumors were found
             if ~isempty(tumorCentroids)
+                fprintf("%s - %s %s\n",string(datetime),"Calculating individual tumor stats for",app.currentFileNameExt)
                 nTumors=length(tumorCentroids(:,1)); % Get segmented tumor count
                 % Individual tumors table
                 headerNames={'image_id','tumor_id','g1_percentage',...
@@ -1052,6 +1347,7 @@ classdef GLASS_AI_APP < matlab.apps.AppBase
                         tumorCentroids(iTumor,1), tumorCentroids(iTumor,2)};
                 end %end for loop: individual tumor analysis
             else
+                fprintf("%s - %s %s\n",string(datetime),"No tumors found in",app.currentFileNameExt)
                 %if no tumors found set tumor burdens to 0
                 headerNames={'image_id','tumor_id','g1_percentage',...
                     'g2_percentage','g3_percentage',...
@@ -1070,7 +1366,8 @@ classdef GLASS_AI_APP < matlab.apps.AppBase
                 slideG4Area = 0;
             end % End IF: ~isempty(tumorCentroids)
 
-            %Caluclate total tumor area in slide
+            %Calculate total tumor area in slide
+            fprintf("%s - %s %s\n",string(datetime),"Calculating slide-level tumor stats for",app.currentFileNameExt)
             Whole_slide_tumor_area = slideG1Area + slideG2Area + slideG3Area + slideG4Area;
 
             % save whole slide stats
@@ -1090,8 +1387,8 @@ classdef GLASS_AI_APP < matlab.apps.AppBase
 
         function gradeImage = createtumorgradeimage(app,classifications)
             % make tumor grade image from classifications.
-
-            %initialize gradeImage RGB arrays
+            fprintf("%s - %s %s\n", string(datetime),"Making tumor grade image for", app.currentFileNameExt)
+            %             %initialize gradeImage RGB arrays
             [XX,YY]=size(classifications);
             ch1=zeros(XX,YY, 'uint8');
             ch2=zeros(XX,YY, 'uint8');
@@ -1102,48 +1399,56 @@ classdef GLASS_AI_APP < matlab.apps.AppBase
             ch1(Inds)=app.SKIPPED_PATCH_COLOR(1);
             ch2(Inds)=app.SKIPPED_PATCH_COLOR(2);
             ch3(Inds)=app.SKIPPED_PATCH_COLOR(3);
+            fprintf("%s - %s %s\n", string(datetime),"Adding skipped pixels to tumor grade map for", app.currentFileNameExt)
 
             % Grade 1
             Inds=classifications==1;
             ch1(Inds)=app.GRADE_1_COLOR(1);
             ch2(Inds)=app.GRADE_1_COLOR(2);
             ch3(Inds)=app.GRADE_1_COLOR(3);
+            fprintf("%s - %s %s\n", string(datetime),"Adding Grade 1 LUAD pixels to tumor grade map for", app.currentFileNameExt)
 
             %Grade 2
             Inds=classifications==2;
             ch1(Inds)=app.GRADE_2_COLOR(1);
             ch2(Inds)=app.GRADE_2_COLOR(2);
             ch3(Inds)=app.GRADE_2_COLOR(3);
+            fprintf("%s - %s %s\n", string(datetime),"Adding Grade 2 LUAD pixels to tumor grade map for", app.currentFileNameExt)
 
             % Grade 3
             Inds=classifications==3;
             ch1(Inds)=app.GRADE_3_COLOR(1);
             ch2(Inds)=app.GRADE_3_COLOR(2);
             ch3(Inds)=app.GRADE_3_COLOR(3);
+            fprintf("%s - %s %s\n", string(datetime),"Adding Grade 3 LUAD pixels to tumor grade map for", app.currentFileNameExt)
 
             % Grade 4
             Inds=classifications==4;
             ch1(Inds)=app.GRADE_4_COLOR(1);
             ch2(Inds)=app.GRADE_4_COLOR(2);
             ch3(Inds)=app.GRADE_4_COLOR(3);
+            fprintf("%s - %s %s\n", string(datetime),"Adding Grade 4 LUAD pixels to tumor grade map for", app.currentFileNameExt)
 
             % Alveoli
             Inds=classifications==5;
             ch1(Inds)=app.NORMAL_ALVEOLI_COLOR(1);
             ch2(Inds)=app.NORMAL_ALVEOLI_COLOR(2);
             ch3(Inds)=app.NORMAL_ALVEOLI_COLOR(3);
+            fprintf("%s - %s %s\n", string(datetime),"Adding normal alveoli pixels to tumor grade map for", app.currentFileNameExt)
 
             % Airways
             Inds=classifications==6;
             ch1(Inds)=app.NORMAL_AIRWAY_COLOR(1);
             ch2(Inds)=app.NORMAL_AIRWAY_COLOR(2);
             ch3(Inds)=app.NORMAL_AIRWAY_COLOR(3);
+            fprintf("%s - %s %s\n", string(datetime),"Adding normal airway pixels to tumor grade map for", app.currentFileNameExt)
 
             % Background/void = white
             Inds=classifications==7;
             ch1(Inds)=app.BACKGROUND_COLOR(1);
             ch2(Inds)=app.BACKGROUND_COLOR(2);
             ch3(Inds)=app.BACKGROUND_COLOR(3);
+            fprintf("%s - %s %s\n", string(datetime),"Adding background/void pixels to tumor grade map for", app.currentFileNameExt)
 
             %merge channels to create RGB image
             gradeImage = cat(3,ch1,ch2,ch3);
@@ -1155,22 +1460,26 @@ classdef GLASS_AI_APP < matlab.apps.AppBase
         function segmentationImage = createsegmentationimage(app,inputImage, tumorMask, individualTumorStat)
             %create an image with labeled tumor segmentations overlayed on
             %H&E image
+            fprintf("%s - %s %s\n",string(datetime), "Making segmentation image for",app.currentFileNameExt)
 
             %adjust tumor mask to output scale
             tumorMask = imresize(tumorMask, app.OUTPUT_SEGMENTATION_IMAGE_SCALE,"nearest");
 
             %initialize image channel arrays
             inputImage = imresize(inputImage,app.OUTPUT_SEGMENTATION_IMAGE_SCALE);
+            fprintf("%s - %s %s %s %.2f%s\n", string(datetime),"Rescaled image from", app.currentFileNameExt, "by", app.OUTPUT_SEGMENTATION_IMAGE_SCALE,"x")
+
             ch1=inputImage(:,:,1);
             ch2=inputImage(:,:,2);
             ch3=inputImage(:,:,3);
-            clear inputImage
 
             %make red overlay from tumorMask
             ch2(tumorMask) = 0; %remove green signal from annotated image
             ch3(tumorMask) = 0; %remove blue signal from annotated image
             segmentationImage=cat(3,ch1,ch2,ch3);
             clear ch1 ch2 ch3
+            fprintf("%s - %s %s\n", string(datetime),"Added red overlay to tumors in", app.currentFileNameExt)
+
 
             % get tumor IDs and centroids for adding labels
             IDs=individualTumorStat.tumor_id;
@@ -1184,6 +1493,7 @@ classdef GLASS_AI_APP < matlab.apps.AppBase
             %round down to make coordinates integers
             Centroid_x = floor(Centroid_x);
             Centroid_y = floor(Centroid_y);
+            fprintf("%s - %s %s %s %.2f%s\n", string(datetime),"Rescaled centroids from", app.currentFileNameExt, "by", app.OUTPUT_SEGMENTATION_IMAGE_SCALE,"x")
 
             % Add outline to segmented tumors
             Boundry=bwperim(tumorMask,8);
@@ -1192,6 +1502,8 @@ classdef GLASS_AI_APP < matlab.apps.AppBase
             Boundry=imdilate(Boundry,strel('disk',3));
             segmentationImage=imoverlay(segmentationImage,Boundry,'b');
             clear Boundry
+            fprintf("%s - %s %s\n", string(datetime),"Added segmentation border to segmented tumors in", app.currentFileNameExt)
+
 
             % Add tumor ID labels on the image
             for iTumor=1:size(Centroid_x,1)
@@ -1211,6 +1523,12 @@ classdef GLASS_AI_APP < matlab.apps.AppBase
                         'yellow','BoxOpacity',0.4,'TextColor','black');
                 end % end if
             end % end for loop: Add tumor ID labels on the image
+            if(app.SPLIT_IMAGE) == true
+                fprintf("%s - %s %s %s\n", string(datetime),"[Low memory mode]: Added tumor labels border to tumors in", app.currentFileNameExt, "using labelimg")
+            else
+                fprintf("%s - %s %s %s\n", string(datetime),"Added tumor labels border to tumors in", app.currentFileNameExt, "using insertText")
+
+            end
 
         end
 
@@ -1248,6 +1566,7 @@ classdef GLASS_AI_APP < matlab.apps.AppBase
             % See the license.txt file for copying permission.
             %
 
+
             % reference maximum stain concentrations for H&E
             maxCRef = [
                 1.9705
@@ -1271,6 +1590,7 @@ classdef GLASS_AI_APP < matlab.apps.AppBase
             %skip normalization if < threshold percent of opaque pixels
             if size(ODhat,1)/size(OD,1) < (app.NORMALIZE_THRESHOLD/100)
                 Inorm = Ii;
+                fprintf("%s - %s %s %s%.0f %s\n",string(datetime),"[NOTE] Stain normalization for", app.currentFileNameExt,"block #",app.iBigBlock,"was skipped due to low tissue content")
                 return
             end
 
@@ -1317,16 +1637,21 @@ classdef GLASS_AI_APP < matlab.apps.AppBase
                 Inorm = reshape(Inorm', h, w, 3);
                 Inorm = uint8(Inorm);
 
-
-            catch %skip normalization if error occurs
+                fprintf("%s - %s %s %s%.0f\n",string(datetime),"Normalizing H&E stain for", app.currentFileNameExt,"block #",app.iBigBlock)
+            catch ME %skip normalization if error occurs
                 Inorm = Ii;
+                fprintf("%s - %s %s %s%.0f %s\n",string(datetime),"[WARNING]: Skipping stain normalization for", app.currentFileNameExt,"block #",app.iBigBlock, "because an error occured")
+                message_text = "GLASS-AI encountered an error during stain normalization." + ...
+                    newline + "Stain normalization was not performed." + ...
+                    newline + "[ERROR]" +newline +ME.message;
+                uialert(app.GLASSAIUIFigure,message_text,"Analysis alert", "Icon", "info")
             end
         end % End function: normalizeStaining
 
 
         function rebuiltImage = rebuildimagefromblockfiles(app,inputFilePath, X, Y, Z, blockNames, blockCoords)
             % use split images in input folder to rebuild image
-
+            fprintf("%s - %s %s %s %s\n", string(datetime),"[Low memory mode]: Rebuilding image for",app.currentFileNameExt, "from blocks in", inputFilePath)
             %initialize output image
             rebuiltImage = zeros([X Y Z],"uint8");
 
@@ -1344,6 +1669,7 @@ classdef GLASS_AI_APP < matlab.apps.AppBase
                     rebuiltImage(X1:X2,Y1:Y2,:) = fetchedImage(1:(X2-X1)+1,1:(Y2-Y1)+1,:);
                 end
             end
+            fprintf("%s - %s %s %s\n", string(datetime),"[Low memory mode]: Finished rebuilding image for",inputFilePath, "from image blocks")
         end %End function: rebeuildimagefromblockfiles
 
         function [blockNames, blockCoords] = generateimageblockinfo(app,bigBlockSize,X,Y)
@@ -1352,7 +1678,9 @@ classdef GLASS_AI_APP < matlab.apps.AppBase
             % Calculate the number of analysis blocks
             app.nBigBlocksX = ceil(double(X)/bigBlockSize);
             app.nBigBlocksY = ceil(double(Y)/bigBlockSize);
-            app.nBigBlocks = app.nBigBlocksY * app.nBigBlocksY; % capture total number of patches for status updates
+            app.nBigBlocks = app.nBigBlocksY * app.nBigBlocksY; % capture total number of blocks for status updates
+            fprintf("%s - %s %s %0.f %s%.0d%s%.0f%s\n",string(datetime),app.currentFileNameExt,"will be divided into",app.nBigBlocks, ...
+                "blocks (",app.nBigBlocksX,"x",app.nBigBlocksY,")")
             app.iBigBlock = 0; % initialize analysis block counter to 0 for current image
 
             %initialize output variable cells
@@ -1384,6 +1712,7 @@ classdef GLASS_AI_APP < matlab.apps.AppBase
         end % End function: generateimageblockinfo
 
         function cleanUpGLASSAI(~)
+            fprintf("%s - %s\n",string(datetime),"Cleaning up analysis folders.")
             %remove temporary folders from previous analysis
             if exist('TempFolder', 'dir'), rmdir('TempFolder', 's'); end
             if exist('ImageBlocksTemp', 'dir'), rmdir('ImageBlocksTemp', 's'); end
@@ -1393,7 +1722,7 @@ classdef GLASS_AI_APP < matlab.apps.AppBase
 
         function outputWindow = hammingwindow(app)
             %generate Hamming window for smoothing
-
+            fprintf("%s - %s\n",string(datetime), "Generating Hamming window for smoothing")
             % get dimensions of window
             vN = app.SMOOTH_SIZE(1);
             hN = app.SMOOTH_SIZE(2);
@@ -1413,12 +1742,12 @@ classdef GLASS_AI_APP < matlab.apps.AppBase
 
             % make 2D window from outer product of vectors
             outputWindow = vVec * hVec;
-
+            fprintf("%s - %s\n",string(datetime), "Fished generating Hamming window for smoothing")
         end % hammingwindow
 
         function smoothedOutput = applysmoothingwindow(~,window,image)
             %perform smoothing using Hamming window
-
+            fprintf("%s - %s\n",string(datetime), "Smoothing image with Hamming window")
             % Check for NaN's:
             inan = isnan(image);
             ynan = any(inan(:));
@@ -1449,11 +1778,14 @@ classdef GLASS_AI_APP < matlab.apps.AppBase
             end
 
             smoothedOutput(inan) = NaN;
+            fprintf("%s - %s\n",string(datetime), "Finished smoothing image with Hamming window")
         end
 
 
         function  writetiff(app,Image,filename)
             %write tiff files with metadata
+
+            fprintf("%s - %s %s\n",string(datetime),"Writing image to ",fullfile(app.OUTPUT_PATH, filename))
 
             bt = Tiff(fullfile(app.OUTPUT_PATH, filename),'w8');
             tags.ImageLength         = size(Image,1);
@@ -1470,6 +1802,25 @@ classdef GLASS_AI_APP < matlab.apps.AppBase
             setTag(bt, tags);
             write(bt, Image);
             close(bt);
+            fprintf("%s - %s %s\n",string(datetime),"Finished writing image to ",fullfile(app.OUTPUT_PATH, filename))
+        end
+
+
+
+
+        function outInfo = estimateMagnifications(~,inInfo)
+            %estimate missing image magnifications in .svs files using the
+            %largest image present. Used to identify 20x magnification
+            %images from slides scanned at higher magnifications.
+            outInfo = inInfo;
+
+            %calculate relative image sizes
+            imageWidths = outInfo(:,1);
+            imageWidths = imageWidths/max(imageWidths);
+
+            %calculate relative image magnifications
+            imageMags = sqrt(imageWidths).*max(outInfo(:,5));
+            outInfo(:,5) = imageMags;
 
         end
     end % End methods: functions
@@ -1481,25 +1832,27 @@ classdef GLASS_AI_APP < matlab.apps.AppBase
 
         % Code that executes after component creation
         function startupFcn(app)
+            echo off all;
             clc;
-            pause(.5); %let window load
-            app.StatusLabel.Text="Loading GLASS-AI neural network";
-            pause(.5);
-            app.StatusLabel.Text="Loading GLASS-AI neural network.";
-            pause(.5);
-            app.StatusLabel.Text="Loading GLASS-AI neural network..";
-            pause(.5);
+            pause(2); %let window load
             app.StatusLabel.Text="Loading GLASS-AI neural network...";
 
             if isdeployed %do if standalone app
                 if ismac % default ctf is within app contents
                     %navigate to proper directory to load GLASS-AI
+                    fprintf("%s:\t%s\n","Mac start dir", pwd);
+                    echo on;
                     cd(ctfroot);
                     cd('../../../..');
+                    echo off;
+                    fprintf("%s:\t%s\n","Mac expected location", pwd);
                 end
                 try
-                    app.GLASS_AI = load(fullfile('Net','GLASS_AI.mat'));
+                    pathToGLASSAI = fullfile('Net','GLASS_AI.mat');
+                    app.GLASS_AI = load(pathToGLASSAI);
                     app.GLASS_AI = app.GLASS_AI.net; %get DAGnet from struct
+                    %log GLASS-AI.mat location
+                    fprintf("%s:\t%s\n","Path to GLASS-AI.mat", pathToGLASSAI);
                 catch ME
                     if (strcmp(ME.identifier,'MATLAB:ErrorRecovery:ItemNoLongerOnPath'))
                         message_text = "Could not find the GLASS-AI model. Has it been moved/deleted?" + ...
@@ -1512,8 +1865,14 @@ classdef GLASS_AI_APP < matlab.apps.AppBase
                             newline + "[ERROR MESSAGE]" + newline + ME.message;
                         uialert(app.GLASSAIUIFigure,message_text,"Model loading error");
                     end
-                    %rethrow error to stop execution
+
+                    %log error
+                    fprintf("%s:\t%s\n","GLASS-AI model not found at", pathToGLASSAI);
+
+                    %rethrow error to stop execution and write to diary/log
+                    echo on;
                     rethrow(ME);
+
                 end
             else %not deployed
                 try
@@ -1522,11 +1881,15 @@ classdef GLASS_AI_APP < matlab.apps.AppBase
                     filelist = dir(fullfile(pwd, '**','GLASS_AI.mat'));
                     for file = 1:length(filelist)
                         if filelist(file).bytes == 61020398
-                            netfile = fullfile(filelist(file).folder,filelist(file).name);
+                            pathToGLASSAI = fullfile(filelist(file).folder,filelist(file).name);
                         end
                     end
-                    app.GLASS_AI = load(netfile);
+
+                    app.GLASS_AI = load(pathToGLASSAI);
                     app.GLASS_AI = app.GLASS_AI.net; % get DAGnet from struct
+                    %log GLASS-AI.mat location
+                    fprintf("%s:\t%s\n","Path to GLASS-AI.mat", pathToGLASSAI);
+
                 catch ME
                     if (strcmp(ME.identifier,'MATLAB:ErrorRecovery:ItemNoLongerOnPath'))
                         message_text = "GLASS-AI failed to load: Network file not found." + ...
@@ -1539,8 +1902,15 @@ classdef GLASS_AI_APP < matlab.apps.AppBase
                             newline + "[ERROR MESSAGE]" + newline + ME.message;
                         uialert(app.GLASSAIUIFigure,message_text,"Model loading error");
                     end
-                    %rethrow error to stop execution
+
+                    %log error
+                    fprintf("%s:\t%s\n","GLASS-AI model not found within", pathToGLASSAI);
+
+                    %rethrow error to stop execution and write error to
+                    %diary/log
+                    echo on;
                     rethrow(ME);
+                    
                 end
             end
 
@@ -1551,7 +1921,7 @@ classdef GLASS_AI_APP < matlab.apps.AppBase
                 % change directory to desktop
                 try
                     cd('Desktop');
-                catch ME
+                catch
                     % remain in user folder if no Desktop folder
                 end
             end
@@ -1561,22 +1931,41 @@ classdef GLASS_AI_APP < matlab.apps.AppBase
                 % change directory to desktop
                 try
                     cd('Desktop');
-                catch ME
+                catch 
                     % remain in user folder if no Desktop folder
                 end
 
             end
             app.StatusLabel.Text="GLASS-AI loaded. Awaiting input/selection.";
 
+            %start log
+            dateString = string(datetime);
+            dateString = replace(dateString,":","-");
+            dateString = replace(dateString," ","_");
+            app.logFileName = strcat("GLASS-AI_log_",dateString,".txt");
+            app.logFilePath = pwd;
+            diary(fullfile(app.logFilePath,app.logFileName));
+            %log system info
+            fprintf("%s:\t%s\n","App is deployed", string(isdeployed));
+            fprintf("%s:\t%s\n","System type", computer);
+            fprintf("%s:\t %s\n","Can use GPU", string(canUseGPU));
             %get system memory size for low memory mode suggestion
-            [~, app.SYSTEM_MEMORY]=system('sysctl hw.memsize | awk ''{print $2}''');
-            app.SYSTEM_MEMORY = str2double(app.SYSTEM_MEMORY)/(1024^3);
+            if ispc
+                [~, app.SYSTEM_MEMORY]=memory;
+                app.SYSTEM_MEMORY = ceil(app.SYSTEM_MEMORY.PhysicalMemory.Total/(1024^3));
+            else
+                [~, app.SYSTEM_MEMORY]=system('sysctl hw.memsize | awk ''{print $2}''');
+                app.SYSTEM_MEMORY = round(str2double(app.SYSTEM_MEMORY)/(1024^3));
+            end
+            fprintf("%s:\t%d\n","System memory (GB)", app.SYSTEM_MEMORY);
+
         end
 
         % Button pushed function: BrowseButton
         function BrowseButtonPushed(app, event)
             % Get target directory from user
             app.INPUT_PATH=uigetdir;
+            assignin("base","inputPath",app.INPUT_PATH)
             % handle 'cancel' button press from UI  (val == 0)
             if app.INPUT_PATH == 0
                 app.INPUT_PATH = "";
@@ -1600,6 +1989,7 @@ classdef GLASS_AI_APP < matlab.apps.AppBase
             app.GLASSAIUIFigure.Visible = 'off';
             app.GLASSAIUIFigure.Visible = 'on';
 
+            fprintf("%s - %s:\t%s\n",string(datetime),"Input directory selected:", app.INPUT_PATH);
 
             % Ready check
             if isempty(fileNames)
@@ -1620,16 +2010,22 @@ classdef GLASS_AI_APP < matlab.apps.AppBase
             linearIndex = sub2ind(size(data),r,c);
             app.SELECTED_FILES = data(linearIndex); % Store names of selected files
 
+
+
+
             %toggle low memory mode if file is too large for system memory
             suggestLowMemoryMode = false;
-            if app.LowmemorymodeSwitch.Value == "On" %skip if low memory mode is already enabled
-                for n = 1:length(app.SELECTED_FILES) % Get system file paths for selected files
-                    app.SELECTED_PATHS = cellfun(@(x) fullfile(app.INPUT_PATH,x), app.SELECTED_FILES, 'Uniform',0);
-                end
 
+            for n = 1:length(app.SELECTED_FILES) % Get system file paths for selected files
+                app.SELECTED_PATHS = cellfun(@(x) fullfile(app.INPUT_PATH,x), app.SELECTED_FILES, 'Uniform',0);
+                fprintf("%s - %s:\t%s\t%.2f %s\n",string(datetime),"File selected", app.SELECTED_PATHS{n}, dir(app.SELECTED_PATHS{n}).bytes/(1024^2),"MB");
+            end
+
+            if app.LowmemorymodeSwitch.Value == "Off" %skip if low memory mode is already enabled
                 for file = 1: numel(app.SELECTED_PATHS) % compare file size to system memory
                     if dir(app.SELECTED_PATHS{file}).bytes/(1024^3) >= app.SYSTEM_MEMORY/20
                         suggestLowMemoryMode = true;
+                        fprintf("%s - %s:\t%s\n","Low mememory mode suggested for ", app.SELECTED_PATHS{file});
                     end
 
                 end
@@ -1657,73 +2053,131 @@ classdef GLASS_AI_APP < matlab.apps.AppBase
 
         % Button pushed function: RunButton
         function RunButtonPushed(app, event)
+            echo off
+            %disable run button
+            app.RunButton.Enable=false;
+            %move logfile to output directory
+            if ~strcmp(app.logFilePath,app.OUTPUT_PATH)
+                diary("off");
+                movefile(fullfile(app.logFilePath,app.logFileName),fullfile(app.OUTPUT_PATH,app.logFileName));
+                app.logFilePath = app.OUTPUT_PATH;
+                diary(fullfile(app.logFilePath,app.logFileName));
+            end
+
+            fprintf("%s\n","%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%")
+            fprintf("%s - %s\n",string(datetime),"Run button pushed.");
+            fprintf("%s\n","%%%%%%% File selection %%%%%%%")
+
+            %start stopwatch
+            app.analysisStartTime = tic;
+
+            app.nImages = length(app.SELECTED_FILES);
+            fprintf("%.0f %s\n",app.nImages,"files selected for analysis:")
+
             % Get system file paths for selected files
             for n = 1:length(app.SELECTED_FILES)
                 app.SELECTED_PATHS = cellfun(@(x) fullfile(app.INPUT_PATH,x), app.SELECTED_FILES, 'Uniform',0);
+                fprintf("%s\t%.2f %s\n", app.SELECTED_PATHS{n}, dir(app.SELECTED_PATHS{n}).bytes/(1024^2),"MB");
             end
 
-            % Set app variables
-            app.nImages = length(app.SELECTED_PATHS);
-            app.analysisStartTime = tic;
-            app.RunButton.Enable=false;
+            fprintf("%s\n","%%%%%%% Run parameters %%%%%%%")
 
             %Analysis Options panel
             app.APPEND_SLIDE_SUMMARY = app.OverwriteSlideSummaryInput.Value;
+            fprintf("%s:\t%s\n","Append slide summary", string(app.APPEND_SLIDE_SUMMARY));
+
             app.IMAGE_BLOCK_SIZE = app.AnalysisBlockSizeInput.Value;
+            fprintf("%s:\t%.0f\n","Analysis block size", app.IMAGE_BLOCK_SIZE);
             if app.NormalizestainingSwitch.Value == "On"
                 app.NORMALIZE_STAINS = 1;
             else
                 app.NORMALIZE_STAINS = 0;
             end
+            fprintf("%s:\t%s\n","Normalize staining", string(logical(app.NORMALIZE_STAINS)));
             if app.PreviewoutputimagesSwitch.Value == "On"
                 app.OUTPUT_IMAGE_PREVIEW = 1;
             else
                 app.OUTPUT_IMAGE_PREVIEW = 0;
             end
+            fprintf("%s:\t%s\n","Make preview images", string(logical(app.OUTPUT_IMAGE_PREVIEW)));
             if app.LowmemorymodeSwitch.Value == "On"
-                app.SPLIT_IMAGE = 1;
+                app.LowMemoryMode = 1;
             else
-                app.SPLIT_IMAGE = 0;
+                app.LowMemoryMode = 0;
             end
+            fprintf("%s:\t%s\n","Use low memory mode", string(logical(app.LowMemoryMode)));
 
             %GLASS-AI Parameters tab
             app.PATCH_SKIP_THRESHOLD = app.PatchTissueThresholdInput.Value;
+            fprintf("%s:\t%.0f\n","Patch skip threshold", app.PATCH_SKIP_THRESHOLD);
             app.SMOOTH_METHOD = app.SmoothingMethodDropDown.Value;
+            fprintf("%s:\t%s\n","Smoothing method", app.SMOOTH_METHOD);
             app.SMOOTH_SIZE = [app.SmoothingSizeSpinner.Value app.SmoothingSizeSpinner.Value];
+            fprintf("%s:\t%.0f\n","Smoothing diameter", app.SmoothingSizeSpinner.Value);
             app.TUMOR_SIZE_THRESHOLD = app.TumorSizeThresholdInput.Value;
+            fprintf("%s:\t%.0f\n","Tumor size threshold", app.TUMOR_SIZE_THRESHOLD);
             app.TUMOR_MERGE_RADIUS = app.TumorMergeRadiusInput.Value;
+            fprintf("%s:\t%.0f\n","Tumor merge distance", app.TUMOR_MERGE_RADIUS);
 
             %Stain Normalization Parameters tab
             app.NORMALIZE_ALPHA = app.NormPseudomaxTolerance.Value;
+            fprintf("%s:\t%.3f\n","Stain normalization alpha", app.NORMALIZE_ALPHA);
             app.NORMALIZE_BETA = app.NormTransparencyThreshold.Value;
+            fprintf("%s:\t%.3f\n","Stain normalization beta", app.NORMALIZE_BETA);
             app.NORMALIZE_IO = app.NormBackgroundIntensity.Value;
+            fprintf("%s:\t%.3f\n","Stain normalization background", app.NORMALIZE_IO);
             app.NORMALIZE_THRESHOLD = app.NormMinimumTissuePercent.Value;
+            fprintf("%s:\t%.3f\n","Stain normalization tissue threshold", app.NORMALIZE_THRESHOLD);
             app.NORMALIZE_HEREF = [
                 app.HemRedInput.Value       app.EosRedInput.Value
                 app.HemGreenInput.Value     app.EosGreenInput.Value
                 app.HemBlueInput.Value      app.EosBlueInput.Value
                 ];
+            fprintf("%s:\t%.3f\t%.3f\t%.3f\n","Stain normalization hematoxylin", app.HemRedInput.Value,app.HemGreenInput.Value, app.HemBlueInput.Value);
+            fprintf("%s:\t%.3f\t%.3f\t%.3f\n","Stain normalization eosin", app.EosRedInput.Value,app.EosGreenInput.Value, app.EosBlueInput.Value);
 
             %Grade Map Colors tab
             app.NORMAL_ALVEOLI_COLOR = [app.NormalAlveoliColorEditField_R.Value, app.NormalAlveoliColorEditField_G.Value, app.NormalAlveoliColorEditField_B.Value];
+            fprintf("%s:\t%.0f\t%.0f\t%.0f\n","Alveoli Color",app.NORMAL_ALVEOLI_COLOR(1),app.NORMAL_ALVEOLI_COLOR(2),app.NORMAL_ALVEOLI_COLOR(3))
             app.NORMAL_AIRWAY_COLOR = [app.NormalAirwayColorEditField_R.Value, app.NormalAirwayColorEditField_G.Value, app.NormalAirwayColorEditField_B.Value];
+            fprintf("%s:\t%.0f\t%.0f\t%.0f\n","Airway Color",app.NORMAL_AIRWAY_COLOR(1),app.NORMAL_AIRWAY_COLOR(2),app.NORMAL_AIRWAY_COLOR(3))
             app.GRADE_1_COLOR = [app.Grade1ColorEditField_R.Value, app.Grade1ColorEditField_G.Value, app.Grade1ColorEditField_B.Value];
+            fprintf("%s:\t%.0f\t%.0f\t%.0f\n","Grade 1 LUAD Color",app.GRADE_1_COLOR(1),app.GRADE_1_COLOR(2),app.GRADE_1_COLOR(3))
             app.GRADE_2_COLOR = [app.Grade2ColorEditField_R.Value, app.Grade2ColorEditField_G.Value, app.Grade2ColorEditField_B.Value];
+            fprintf("%s:\t%.0f\t%.0f\t%.0f\n","Grade 2 LUAD Color",app.GRADE_2_COLOR(1),app.GRADE_2_COLOR(2),app.GRADE_2_COLOR(3))
             app.GRADE_3_COLOR = [app.Grade3ColorEditField_R.Value, app.Grade3ColorEditField_G.Value, app.Grade3ColorEditField_B.Value];
+            fprintf("%s:\t%.0f\t%.0f\t%.0f\n","Grade 3 LUAD Color",app.GRADE_3_COLOR(1),app.GRADE_3_COLOR(2),app.GRADE_3_COLOR(3))
             app.GRADE_4_COLOR = [app.Grade4ColorEditField_R.Value, app.Grade4ColorEditField_G.Value, app.Grade4ColorEditField_B.Value];
+            fprintf("%s:\t%.0f\t%.0f\t%.0f\n","Grade 4 LUAD Color",app.GRADE_4_COLOR(1),app.GRADE_4_COLOR(2),app.GRADE_4_COLOR(3))
             app.BACKGROUND_COLOR = [app.BackgroundColorEditField_R.Value, app.BackgroundColorEditField_G.Value, app.BackgroundColorEditField_B.Value];
+            fprintf("%s:\t%.0f\t%.0f\t%.0f\n","Background class Color",app.BACKGROUND_COLOR(1),app.BACKGROUND_COLOR(2),app.BACKGROUND_COLOR(3))
             app.SKIPPED_PATCH_COLOR = [app.SkippedPatchColorEditField_R.Value, app.SkippedPatchColorEditField_G.Value, app.SkippedPatchColorEditField_B.Value];
+            fprintf("%s:\t%.0f\t%.0f\t%.0f\n","Skipped patch Color",app.SKIPPED_PATCH_COLOR(1),app.SKIPPED_PATCH_COLOR(2),app.SKIPPED_PATCH_COLOR(3))
 
             %Output Image Scaling tab
             app.OUTPUT_GRADE_IMAGE_SCALE = app.GradeMapScalingSlider.Value/100;
+            fprintf("%s:\t%.3f\n","Grade map output scale", app.OUTPUT_GRADE_IMAGE_SCALE);
             app.MAKE_SEGMENTATION_IMAGE = [app.MaketumorsegmentationimageCheckBox.Value];
+            fprintf("%s:\t%.3f\n","Make segmentation image", app.MAKE_SEGMENTATION_IMAGE);
             app.OUTPUT_SEGMENTATION_IMAGE_SCALE = app.SegmentationScalingSlider.Value/100;
+            fprintf("%s:\t%.3f\n","Segmentation image output scale", app.OUTPUT_SEGMENTATION_IMAGE_SCALE);
             app.OUTPUT_NORMALIZED_IMAGE_SCALE = app.StainNormalizedImageScalingSlider.Value/100;
+            fprintf("%s:\t%.3f\n","Stain normalize image output scale", app.OUTPUT_NORMALIZED_IMAGE_SCALE);
 
-
-
+            fprintf("%s\n","%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%")
+            fprintf("%s\n","Begin analysis")
             % Begin analysis
-            runglassai(app);
+            try
+                runglassai(app);
+            catch ME
+                message_text = "GLASS-AI encountered an unknown error." + ...
+                    newline + "[ERROR MESSAGE]" + newline + ME.message;
+                uialert(app.GLASSAIUIFigure,message_text,"Analysis error")
+                fprintf("%s - %s \n",string(datetime),"Analysis terminated due to error")
+                %rethrow error to stop execution
+                echo on;
+                rethrow(ME);
+            end
         end
 
         % Button pushed function: OutputFolderButton
@@ -1746,6 +2200,7 @@ classdef GLASS_AI_APP < matlab.apps.AppBase
             app.GLASSAIUIFigure.Visible = 'off';
             app.GLASSAIUIFigure.Visible = 'on';
 
+            fprintf("%s - %s:\t%s\n",string(datetime),"Output directory selected:", app.OUTPUT_PATH);
             % Ready check
             if isfolder(app.OUTPUT_PATH) % Green light if output folder exists
                 app.OutputFolderLamp.Color=[0,1,0];
@@ -1759,6 +2214,9 @@ classdef GLASS_AI_APP < matlab.apps.AppBase
         % Close request function: GLASSAIUIFigure
         function GLASSAIUIFigureCloseRequest(app, event)
             cleanUpGLASSAI(app)
+            fprintf("%s - %s\n",string(datetime),"Application terminated.");
+            echo off all;
+            diary("off");
             delete(app)
         end
 
@@ -1789,6 +2247,7 @@ classdef GLASS_AI_APP < matlab.apps.AppBase
             app.Grade4Lamp.Color = [app.Grade4ColorEditField_R.Value/255, app.Grade4ColorEditField_G.Value/255, app.Grade4ColorEditField_B.Value/255];
             app.BackgroundLamp.Color = [app.BackgroundColorEditField_R.Value/255, app.BackgroundColorEditField_G.Value/255, app.BackgroundColorEditField_B.Value/255];
             app.SkippedPatchLamp.Color = [app.SkippedPatchColorEditField_R.Value/255, app.SkippedPatchColorEditField_G.Value/255, app.SkippedPatchColorEditField_B.Value/255];
+
         end
 
         % Value changed function: GradeMapScalingSlider, 
