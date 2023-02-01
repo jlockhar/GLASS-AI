@@ -1,10 +1,13 @@
-classdef GLASS_AI_APP < matlab.apps.AppBase
+classdef GLASS_AI_APP_exported < matlab.apps.AppBase
 
     % Properties that correspond to app components
     properties (Access = public)
         GLASSAIUIFigure                 matlab.ui.Figure
         TabGroup                        matlab.ui.container.TabGroup
         GLASSAIParametersTab            matlab.ui.container.Tab
+        ForceCPUCheckBox                matlab.ui.control.CheckBox
+        SemanticSegMiniBatchSizeInput   matlab.ui.control.Spinner
+        SegmentationminibatchsizeLabel  matlab.ui.control.Label
         SmoothingSizeSpinner            matlab.ui.control.Spinner
         SmoothingSizeSpinnerLabel       matlab.ui.control.Label
         SmoothingMethodDropDown         matlab.ui.control.DropDown
@@ -132,7 +135,7 @@ classdef GLASS_AI_APP < matlab.apps.AppBase
     properties (Access = private)
 
         % PARAMETERS %
-        GLASSAI_APP_VERSION = 'v0.9.3r' % Version of GLASS-AI standalone app
+        GLASSAI_APP_VERSION = 'v0.9.3.2r' % Version of GLASS-AI standalone app
         INPUT_PATH  % Path selected using BrowseButton
         OUTPUT_PATH % Path selected using OutputFolderButton
         SELECTED_FILES % List of files selected in FileTable
@@ -167,8 +170,8 @@ classdef GLASS_AI_APP < matlab.apps.AppBase
         SKIPPED_PATCH_COLOR % color of skipped patches in grade map
         SYSTEM_MEMORY % Available memory on system
         MAKE_SEGMENTATION_IMAGE % Generate labeled tumor segmentation image
-
-
+        SEMANTIC_SEG_MINIBATCH_SIZE % Set size for minibatches during classification
+        FORCE_CPU % Only use CPU for analysis even if GPU is available
 
         % nCounts and iIterators %
         nImages % Total number of images selected for analysis
@@ -183,7 +186,8 @@ classdef GLASS_AI_APP < matlab.apps.AppBase
         analysisStartTime % Store time analysis was started
         analysisRunTime % Store time elapsed since analysis was started
         analysisEndTime % Store time analysis completed
-
+        imageStartTime % Stopwatch for individual image
+        imageRunTime %Store time elapsed since analysis was started on image
 
         SkipPatchFailed = 0; % Flag for showing alert once when patch skipping has failed
         LowMemoryMode % Store Low Memory Mode switch state at run start
@@ -193,6 +197,7 @@ classdef GLASS_AI_APP < matlab.apps.AppBase
         currentFilePath % Store path to image being analyzed
         logFileName % name of log file
         logFilePath % location of log file
+        
     end
 
     methods (Access = private)
@@ -231,7 +236,7 @@ classdef GLASS_AI_APP < matlab.apps.AppBase
                 fprintf("%s %0.0f %s\n","----- Start image",app.iImage,"-----")
 
                 fprintf("%s - %s %s\n",string(datetime),"Beginning analysis of", app.currentFileNameExt)
-
+                app.imageStartTime = tic;
                 %_Status Update_%
                 app.analysisStepDescription = "Loading image";
                 statusupdate(app);
@@ -342,7 +347,7 @@ classdef GLASS_AI_APP < matlab.apps.AppBase
                 for x=1:app.nBigBlocksX
                     for y=1:app.nBigBlocksY
                         app.iBigBlock = app.iBigBlock + 1; %increment image patch counter for curent image
-                        fprintf("%s - %s %.0f %s%.0f %s%.0f%s%.0f%s\n",string(datetime),"Starting analysis of block #",app.iBigBlock, ...
+                        fprintf("%s - %s%.0f %s %.0f %s%.0f%s%.0f%s\n",string(datetime),"Starting analysis of block #",app.iBigBlock, ...
                             "of",app.nBigBlocks,"(",x,",",y,")")
                         %----% compute block coordinates
                         X1 = (bigBlockSize * (x-1)) + 1; %left
@@ -811,9 +816,9 @@ classdef GLASS_AI_APP < matlab.apps.AppBase
 
             % Get time elapsed from start of analysis
             app.analysisRunTime = toc(app.analysisStartTime);
-
+            app.imageRunTime = toc(app.imageStartTime);
             % Display update in StatusLabel
-            app.StatusLabel.Text=sprintf("%s for %s (image %d of %d)\n Time Elapsed: %s", app.analysisStepDescription, app.SELECTED_FILES{app.iImage}, app.iImage, app.nImages, duration([0,0,app.analysisRunTime]));
+            app.StatusLabel.Text=sprintf("%s for %s (image %d of %d)\n Time Elapsed: %s (Total: %s)", app.analysisStepDescription, app.SELECTED_FILES{app.iImage}, app.iImage, app.nImages, duration([0,0,app.imageRunTime]), duration([0,0,app.analysisRunTime]));
             pause(0.1); %refresh app.StatusLabel text before continuing
 
         end % End function: statusupdate
@@ -1013,7 +1018,7 @@ classdef GLASS_AI_APP < matlab.apps.AppBase
 
             %try to use GPU, otherwise use CPU for classification
             %_Status Update_%
-            if  canUseGPU == 1
+            if  canUseGPU == 1 && app.FORCE_CPU == false
                 app.analysisStepDescription = sprintf("Analyzing patch %d of %d using GPU",...
                     app.iBigBlock, app.nBigBlocks);
                 statusupdate(app);
@@ -1031,8 +1036,10 @@ classdef GLASS_AI_APP < matlab.apps.AppBase
                     try
                         fprintf("%s - %s %s %s%.0f\n",string(datetime),"Making empty patch mask for",app.currentFileNameExt,"block #",app.iBigBlock)
                         bmask = apply(bim, @(bs)rgb2gray(bs.Data)<120, "Level",1);
-                        bls = selectBlockLocations(bim,'BlockSize',patchSize(1:2),...
-                            "Mask", bmask,"InclusionThreshold", app.PATCH_SKIP_THRESHOLD/100);
+                        bls = selectBlockLocations(bim,...
+                            'BlockSize',patchSize(1:2),...
+                            "Mask", bmask,...
+                            "InclusionThreshold", app.PATCH_SKIP_THRESHOLD/100);
                         fprintf("%s - %s %s %s%.0f\n",string(datetime),"Selecting non-empty patches in",app.currentFileNameExt,"block #",app.iBigBlock)
                     catch 
                         %skip masking if failed
@@ -1052,7 +1059,8 @@ classdef GLASS_AI_APP < matlab.apps.AppBase
 
                 else %skip masking if no threshold set
                     bls = selectBlockLocations(bim,'BlockSize',patchSize(1:2),...
-                        'InclusionThreshold',0,'Levels',1);
+                        'InclusionThreshold',0,...
+                        'Levels',1);
                     fprintf("%s - %s %s %s%.0f\n",string(datetime),"Making patches for",app.currentFileNameExt,"block #",app.iBigBlock)
                 end
             catch ME
@@ -1060,7 +1068,7 @@ classdef GLASS_AI_APP < matlab.apps.AppBase
                     newline + "If this error persits, try reinstalling GLASS-AI."+...
                     newline + "[ERROR MESSAGE]" + newline + ME.message;
                 uialert(app.GLASSAIUIFigure,message_text,"Analysis error");
-                fprintf("%s - %s %s %s%.0f\n",string(datetime),"[ERROR]: An error curred while making patches for",app.currentFileNameExt,"block #",app.iBigBlock)
+                fprintf("%s - %s %s %s%.0f\n",string(datetime),"[ERROR]: An error ocurred while making patches for",app.currentFileNameExt,"block #",app.iBigBlock)
                 %rethrow error to halt execution
                 rethrow(ME);
             end
@@ -1073,9 +1081,16 @@ classdef GLASS_AI_APP < matlab.apps.AppBase
                     fprintf("%s - %s%.0f %s\n", string(datetime),"[NOTE]: All patches in block #",app.iBigBlock, "were skipped")
                 else
                     fprintf("%s - %s %s %s%.0f\n",string(datetime),"Starting analysis of", app.currentFileNameExt,"block #",app.iBigBlock)
-                    [scores1] = apply(bim,@(bs)classifypatches(app,bs, net), ...
-                        'Level',1,'BlockLocationSet', bls,...
-                        'UseParallel',canUseGPU,'OutputLocation','TempFolder');
+                    %move app values to temp variables for parallel
+                    %processing
+                    useCPU = app.FORCE_CPU;
+                    BatchSize = app.SEMANTIC_SEG_MINIBATCH_SIZE;
+                    
+                    [scores1] = apply(bim,@(bs)classifypatches(app,useCPU, BatchSize, bs, net),...
+                        'Level',1,...
+                        'BlockLocationSet', bls,...
+                        'UseParallel',(canUseGPU & useCPU),...
+                        'OutputLocation','TempFolder');
                     %collect output classifications
                     scores = gather(scores1);
                     fprintf("%s - %s %s %s%.0f\n",string(datetime),"Finished analysis of", app.currentFileNameExt,"block #",app.iBigBlock)
@@ -1109,7 +1124,7 @@ classdef GLASS_AI_APP < matlab.apps.AppBase
 
         end % End function gradeimage
 
-        function [scores] = classifypatches(~,patch,net)
+        function [scores] = classifypatches(~,useCPU,BatchSize,patch,net)
             % Predict tumor grades in image patch using GLASS-AI.
 
             % Get dimensions of image
@@ -1137,7 +1152,15 @@ classdef GLASS_AI_APP < matlab.apps.AppBase
             %I = padarray(I,[X_pad, Y_pad, 0],255,'post');
 
             % Predict grades
-            [~,~,scores] = semanticseg(I, net);
+            if useCPU == true
+                ExEnv = "cpu";
+            else
+                ExEnv = "auto";
+            end
+            [~,~,scores] = semanticseg(I, net,...
+                'MiniBatchSize',BatchSize,...
+                'ExecutionEnvironment',ExEnv);
+            
             % trim padded area off scores before returning
             scores = scores(1:X,1:Y,:);
 
@@ -1327,10 +1350,10 @@ classdef GLASS_AI_APP < matlab.apps.AppBase
                         tumorG3Area + tumorG4Area;
 
                     % Calculate proportion of each grade in tumor
-                    tumorG1Percent=(double(tumorG1Area)/tumorTotalArea)*100;
-                    tumorG2Percent=(double(tumorG2Area)/tumorTotalArea)*100;
-                    tumorG3Percent=(double(tumorG3Area)/tumorTotalArea)*100;
-                    tumorG4Percent=(double(tumorG4Area)/tumorTotalArea)*100;
+                    tumorG1Percent=(double(tumorG1Area)/tumorTotalArea);
+                    tumorG2Percent=(double(tumorG2Area)/tumorTotalArea);
+                    tumorG3Percent=(double(tumorG3Area)/tumorTotalArea);
+                    tumorG4Percent=(double(tumorG4Area)/tumorTotalArea);
 
                     % calculate total area of each grade in image
                     slideG1Area = slideG1Area + tumorG1Area;
@@ -1372,10 +1395,10 @@ classdef GLASS_AI_APP < matlab.apps.AppBase
 
             % save whole slide stats
             wholeSlideStat(1,:)={filename, nTumors,...
-                (slideG1Area/Whole_slide_tumor_area)*100,...
-                (slideG2Area/Whole_slide_tumor_area)*100,...
-                (slideG3Area/Whole_slide_tumor_area)*100,...
-                (slideG4Area/Whole_slide_tumor_area)*100,...
+                (slideG1Area/Whole_slide_tumor_area),...
+                (slideG2Area/Whole_slide_tumor_area),...
+                (slideG3Area/Whole_slide_tumor_area),...
+                (slideG4Area/Whole_slide_tumor_area),...
                 slideG1Area,...
                 slideG2Area,...
                 slideG3Area,...
@@ -1958,6 +1981,12 @@ classdef GLASS_AI_APP < matlab.apps.AppBase
                 app.SYSTEM_MEMORY = round(str2double(app.SYSTEM_MEMORY)/(1024^3));
             end
             fprintf("%s:\t%d\n","System memory (GB)", app.SYSTEM_MEMORY);
+            
+            if ismac
+                app.ForceCPUCheckBox.Enable = false;
+                app.ForceCPUCheckBox.Value = true;
+                app.ForceCPUCheckBox.Tooltip = sprintf("Parallel computing is not available on Mac; must use CPU for analysis.\n%s",app.ForceCPUCheckBox.Tooltip{1});
+            end
 
         end
 
@@ -2118,6 +2147,10 @@ classdef GLASS_AI_APP < matlab.apps.AppBase
             fprintf("%s:\t%.0f\n","Tumor size threshold", app.TUMOR_SIZE_THRESHOLD);
             app.TUMOR_MERGE_RADIUS = app.TumorMergeRadiusInput.Value;
             fprintf("%s:\t%.0f\n","Tumor merge distance", app.TUMOR_MERGE_RADIUS);
+            app.SEMANTIC_SEG_MINIBATCH_SIZE = uint8(app.SemanticSegMiniBatchSizeInput.Value);
+            fprintf("%s:\t%.0f\n","Semantic segmentation minibatch size", app.SEMANTIC_SEG_MINIBATCH_SIZE);
+            app.FORCE_CPU = app.ForceCPUCheckBox.Value;
+            fprintf("%s:\t%s\n","Force CPU", string(app.FORCE_CPU));
 
             %Stain Normalization Parameters tab
             app.NORMALIZE_ALPHA = app.NormPseudomaxTolerance.Value;
@@ -2576,6 +2609,28 @@ classdef GLASS_AI_APP < matlab.apps.AppBase
             app.SmoothingSizeSpinner.Tooltip = {'Defines the diameter of the smoothing kernel. Smaller numbers reduce the effect of the smoothing.'};
             app.SmoothingSizeSpinner.Position = [226 136 73 22];
             app.SmoothingSizeSpinner.Value = 200;
+
+            % Create SegmentationminibatchsizeLabel
+            app.SegmentationminibatchsizeLabel = uilabel(app.GLASSAIParametersTab);
+            app.SegmentationminibatchsizeLabel.HorizontalAlignment = 'right';
+            app.SegmentationminibatchsizeLabel.Tooltip = {'Set number of image patches to analyze per batch. Lower values will require less RAM, but will take longer to process.'};
+            app.SegmentationminibatchsizeLabel.Position = [51 33 171 28];
+            app.SegmentationminibatchsizeLabel.Text = 'Segmentation minibatch size';
+
+            % Create SemanticSegMiniBatchSizeInput
+            app.SemanticSegMiniBatchSizeInput = uispinner(app.GLASSAIParametersTab);
+            app.SemanticSegMiniBatchSizeInput.Limits = [1 256];
+            app.SemanticSegMiniBatchSizeInput.RoundFractionalValues = 'on';
+            app.SemanticSegMiniBatchSizeInput.ValueDisplayFormat = '%.0f';
+            app.SemanticSegMiniBatchSizeInput.Tooltip = {'Set number of images patches to classify in parallel per batch. Lower values will require less VRAM, but will increase analysis time.'};
+            app.SemanticSegMiniBatchSizeInput.Position = [226 36 73 22];
+            app.SemanticSegMiniBatchSizeInput.Value = 128;
+
+            % Create ForceCPUCheckBox
+            app.ForceCPUCheckBox = uicheckbox(app.GLASSAIParametersTab);
+            app.ForceCPUCheckBox.Tooltip = {'Force GLASS-AI to use the CPU for analysis even if a compatible GPU is available.'};
+            app.ForceCPUCheckBox.Text = 'Ignore GPU; use CPU only';
+            app.ForceCPUCheckBox.Position = [62 12 164 22];
 
             % Create StainNormalizationParametersTab
             app.StainNormalizationParametersTab = uitab(app.TabGroup);
@@ -3194,7 +3249,7 @@ classdef GLASS_AI_APP < matlab.apps.AppBase
     methods (Access = public)
 
         % Construct app
-        function app = GLASS_AI_APP
+        function app = GLASS_AI_APP_exported
 
             runningApp = getRunningApp(app);
 
