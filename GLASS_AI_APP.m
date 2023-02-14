@@ -135,7 +135,7 @@ classdef GLASS_AI_APP_exported < matlab.apps.AppBase
     properties (Access = private)
 
         % PARAMETERS %
-        GLASSAI_APP_VERSION = 'v0.9.3.2r' % Version of GLASS-AI standalone app
+        GLASSAI_APP_VERSION = 'v0.9.3.4r' % Version of GLASS-AI standalone app
         INPUT_PATH  % Path selected using BrowseButton
         OUTPUT_PATH % Path selected using OutputFolderButton
         SELECTED_FILES % List of files selected in FileTable
@@ -216,7 +216,7 @@ classdef GLASS_AI_APP_exported < matlab.apps.AppBase
             net = app.GLASS_AI;
             app.iImage = 0; %initialize image counter to 0
 
-
+        try %catch errors during any analysis step
             %--% process each image
             for n = 1 : app.nImages
 
@@ -505,7 +505,7 @@ classdef GLASS_AI_APP_exported < matlab.apps.AppBase
                 statusupdate(app);
                 %%%%%%%%%%%%%%%%%
                 try
-                    [individualTumorStat,wholeSlideStat,segmentedTumorMask]=individualtumoranalysis(app,G1,G2,G3,G4,tumorMask,AH,Normal,app.currentFileName);
+                    [individualTumorStat,wholeSlideStat,segmentedTumorMask,tumorLabelMask]=individualtumoranalysis(app,G1,G2,G3,G4,tumorMask,AH,Normal,app.currentFileName);
                     clear G1 G2 G3 G4 tumorMask AH Normal % remove from memory after processing
                     fprintf("%s - %s %s\n",string(datetime),"Finished individual tumor analysis on",app.currentFileNameExt)
                 catch ME
@@ -514,6 +514,24 @@ classdef GLASS_AI_APP_exported < matlab.apps.AppBase
                     uialert(app.GLASSAIUIFigure,message_text,"Analysis error")
                     fprintf("%s - %s %s %s %s\n",string(datetime),"[ERROR]: An error occured during individual tumor analysis of",app.currentFileNameExt,"to",classificationOutputFileName)
 
+                    %rethrow error to stop execution
+                    rethrow(ME);
+                end
+                
+                %---% Save the tumor label maks in the output folder in .mat format
+                %_Status Update_%
+                app.analysisStepDescription = "Saving tumor label masks";
+                statusupdate(app);
+                %%%%%%%%%%%%%%%%%
+                try
+                    tumorLabelOutputFileName=fullfile(app.OUTPUT_PATH, strcat(app.currentFileName,'_tumor_labels.mat'));
+                        save(tumorLabelOutputFileName,'tumorLabelMask', '-v7.3');
+                        fprintf("%s - %s %s %s %s\n", string(datetime),"Saved tumor label masks for",app.currentFileNameExt,"to",tumorLabelOutputFileName)
+                catch ME
+                    message_text = "GLASS-AI encountered an error while saving tumor label masks." + ...
+                        newline + "[ERROR MESSAGE]" + newline + ME.message;
+                    uialert(app.GLASSAIUIFigure,message_text,"Analysis error")
+                    fprintf("%s - %s %s %s %s\n",string(datetime),"[ERROR]: An error occured during saving of tumor label masks for",app.currentFileNameExt,"to",tumorLabelOutputFileName)
                     %rethrow error to stop execution
                     rethrow(ME);
                 end
@@ -789,7 +807,15 @@ classdef GLASS_AI_APP_exported < matlab.apps.AppBase
                 app.nImages,duration([0,0,app.analysisEndTime]));
             %%%%%%%%%%%%%%%%%%%%%%%
             runcheck(app); %recheck options are valid for next run
-
+        catch ME % try: catch errors during any analysis step
+            % write error message to logfile
+            fprintf("%s - %s %s\n",string(datetime),"ERROR: Analysis terminated due to error:", ME.message)
+            % update status window to alert user to error
+            app.StatusLabel.Text= sprintf("An error occured. Analysis Terminated.\n Check logfile for more details.");
+            rethrow ME
+        end % try: catch errors during any analysis step
+        
+        
         end % End function: runglassai
 
         function runcheck(app)
@@ -908,16 +934,16 @@ classdef GLASS_AI_APP_exported < matlab.apps.AppBase
                         C3=strsplit(C2{1},'=');
                         imageMagnification=str2double(C3{2});
                         imageInfo(i,5)=imageMagnification;
-                        fprintf("%s%.0f %s %.0f","Image #",i,"Magnification:",imageMagnification)
+                        fprintf("%s%.0f %s %.0f\n","Image #",i,"Magnification:",imageMagnification)
                     else
                         imageInfo(i,5)=NaN;
-                        fprintf("%s%.0f %s %.0f","Image #",i,"Magnification:",NaN)
+                        fprintf("%s%.0f %s %.0f\n","Image #",i,"Magnification:",NaN)
                     end
                 catch
                     imageInfo(i,4)=NaN;
-                    fprintf("%s%.0f %s %.0f","Image #",i,"Resolution:",NaN)
+                    fprintf("%s%.0f %s %.0f\n","Image #",i,"Resolution:",NaN)
                     imageInfo(i,5)=NaN;
-                    fprintf("%s%.0f %s %.0f","Image #",i,"Resolution:",NaN)
+                    fprintf("%s%.0f %s %.0f\n","Image #",i,"Resolution:",NaN)
                 end
             end
             %fill in missing magnfications for pyrimidal layers
@@ -1041,7 +1067,7 @@ classdef GLASS_AI_APP_exported < matlab.apps.AppBase
                             "Mask", bmask,...
                             "InclusionThreshold", app.PATCH_SKIP_THRESHOLD/100);
                         fprintf("%s - %s %s %s%.0f\n",string(datetime),"Selecting non-empty patches in",app.currentFileNameExt,"block #",app.iBigBlock)
-                    catch 
+                    catch
                         %skip masking if failed
                         fprintf("%s - %s %s %s%.0f\n",string(datetime),"[NOTE]: Empty patch masking failed in ",app.currentFileNameExt,"block #",app.iBigBlock)
                         bls = selectBlockLocations(bim,'BlockSize',patchSize(1:2),...
@@ -1257,7 +1283,7 @@ classdef GLASS_AI_APP_exported < matlab.apps.AppBase
         end % End function: smoothclasses
 
 
-        function [IndividualTumorStat,wholeSlideStat,segmentedTumorMask]=individualtumoranalysis(app,G1,G2,G3,G4,tumorMask,AH,Normal,filename)
+        function [IndividualTumorStat,wholeSlideStat,segmentedTumorMask,labeledTumorImage]=individualtumoranalysis(app,G1,G2,G3,G4,tumorMask,AH,Normal,filename)
             % Performs merging, segmentation, and filtering
             % of individual tumors. Provides data for output tables
             % and images.
@@ -1292,6 +1318,9 @@ classdef GLASS_AI_APP_exported < matlab.apps.AppBase
             slideG3Area=0;
             slideG4Area=0;
 
+            % initialize labeled tumor image
+            labeledTumorImage = zeros(size(G1),"uint16");
+            
             %get tumor centroids for labeling
             CC = bwconncomp(segmentedTumorMask,8); % Segment individual tumors
             s = regionprops(CC,'Centroid'); % Get centroid coordinates for tumor labels
@@ -1326,9 +1355,6 @@ classdef GLASS_AI_APP_exported < matlab.apps.AppBase
                 tableSize = [nTumors 13];
                 IndividualTumorStat = table('Size',tableSize,...
                     'VariableNames',headerNames,'VariableTypes',varTypes);
-
-
-
 
                 % analyze each segmented tumor in image
                 for iTumor=1:nTumors
@@ -1368,6 +1394,10 @@ classdef GLASS_AI_APP_exported < matlab.apps.AppBase
                         tumorG4Percent, tumorG1Area, tumorG2Area,...
                         tumorG3Area,tumorG4Area, tumorTotalArea,...
                         tumorCentroids(iTumor,1), tumorCentroids(iTumor,2)};
+                    
+                    % add tumor to labeled tumor image using ID as pixel
+                    % intensity
+                    labeledTumorImage(classificationIndices) = iTumor;
                 end %end for loop: individual tumor analysis
             else
                 fprintf("%s - %s %s\n",string(datetime),"No tumors found in",app.currentFileNameExt)
@@ -1699,9 +1729,9 @@ classdef GLASS_AI_APP_exported < matlab.apps.AppBase
             % Generate image blocks info
 
             % Calculate the number of analysis blocks
-            app.nBigBlocksX = ceil(double(X)/bigBlockSize);
-            app.nBigBlocksY = ceil(double(Y)/bigBlockSize);
-            app.nBigBlocks = app.nBigBlocksY * app.nBigBlocksY; % capture total number of blocks for status updates
+            app.nBigBlocksX = ceil(X/bigBlockSize);
+            app.nBigBlocksY = ceil(Y/bigBlockSize);
+            app.nBigBlocks = app.nBigBlocksX * app.nBigBlocksY; % capture total number of blocks for status updates
             fprintf("%s - %s %s %0.f %s%.0d%s%.0f%s\n",string(datetime),app.currentFileNameExt,"will be divided into",app.nBigBlocks, ...
                 "blocks (",app.nBigBlocksX,"x",app.nBigBlocksY,")")
             app.iBigBlock = 0; % initialize analysis block counter to 0 for current image
@@ -2542,28 +2572,28 @@ classdef GLASS_AI_APP_exported < matlab.apps.AppBase
             app.TumorSizeThresholdInput.RoundFractionalValues = 'on';
             app.TumorSizeThresholdInput.ValueDisplayFormat = '%.0f';
             app.TumorSizeThresholdInput.Tooltip = {'Tumor with areas smaller than this size will be excluded from analyses and will not be shown on the tumor segmentation map or output tables.'};
-            app.TumorSizeThresholdInput.Position = [225 107 71 22];
+            app.TumorSizeThresholdInput.Position = [225 109 71 22];
             app.TumorSizeThresholdInput.Value = 20;
 
             % Create TumorsizethresholdsqmLabel
             app.TumorsizethresholdsqmLabel = uilabel(app.GLASSAIParametersTab);
             app.TumorsizethresholdsqmLabel.HorizontalAlignment = 'right';
             app.TumorsizethresholdsqmLabel.Tooltip = {'Tumor with areas smaller than this size will be excluded from analyses and will not be shown on the tumor segmentation map.'};
-            app.TumorsizethresholdsqmLabel.Position = [59 107 163 22];
+            app.TumorsizethresholdsqmLabel.Position = [59 109 163 22];
             app.TumorsizethresholdsqmLabel.Text = 'Tumor size threshold (sq. µm)';
 
             % Create TumorMergeRadiusInput
             app.TumorMergeRadiusInput = uieditfield(app.GLASSAIParametersTab, 'numeric');
             app.TumorMergeRadiusInput.Limits = [0 Inf];
             app.TumorMergeRadiusInput.Tooltip = {'Tumors that are within this distance of each other will be combined during analysis.'};
-            app.TumorMergeRadiusInput.Position = [226 76 71 22];
+            app.TumorMergeRadiusInput.Position = [226 79 71 22];
             app.TumorMergeRadiusInput.Value = 5;
 
             % Create TumormergeradiusmLabel
             app.TumormergeradiusmLabel = uilabel(app.GLASSAIParametersTab);
             app.TumormergeradiusmLabel.HorizontalAlignment = 'right';
             app.TumormergeradiusmLabel.Tooltip = {'Tumors that are within this distance of each other will be combined during analysis.'};
-            app.TumormergeradiusmLabel.Position = [83 77 139 22];
+            app.TumormergeradiusmLabel.Position = [83 80 139 22];
             app.TumormergeradiusmLabel.Text = 'Tumor merge radius (µm)';
 
             % Create PatchTissueThresholdInput
@@ -2597,7 +2627,7 @@ classdef GLASS_AI_APP_exported < matlab.apps.AppBase
             app.SmoothingSizeSpinnerLabel = uilabel(app.GLASSAIParametersTab);
             app.SmoothingSizeSpinnerLabel.HorizontalAlignment = 'right';
             app.SmoothingSizeSpinnerLabel.Tooltip = {'Defines the diameter of the smoothing kernel. Smaller numbers reduce the effect of the smoothing.'};
-            app.SmoothingSizeSpinnerLabel.Position = [129 136 90 22];
+            app.SmoothingSizeSpinnerLabel.Position = [129 138 90 22];
             app.SmoothingSizeSpinnerLabel.Text = 'Smoothing Size';
 
             % Create SmoothingSizeSpinner
@@ -2607,14 +2637,14 @@ classdef GLASS_AI_APP_exported < matlab.apps.AppBase
             app.SmoothingSizeSpinner.RoundFractionalValues = 'on';
             app.SmoothingSizeSpinner.ValueDisplayFormat = '%.0f';
             app.SmoothingSizeSpinner.Tooltip = {'Defines the diameter of the smoothing kernel. Smaller numbers reduce the effect of the smoothing.'};
-            app.SmoothingSizeSpinner.Position = [226 136 73 22];
+            app.SmoothingSizeSpinner.Position = [226 138 73 22];
             app.SmoothingSizeSpinner.Value = 200;
 
             % Create SegmentationminibatchsizeLabel
             app.SegmentationminibatchsizeLabel = uilabel(app.GLASSAIParametersTab);
             app.SegmentationminibatchsizeLabel.HorizontalAlignment = 'right';
             app.SegmentationminibatchsizeLabel.Tooltip = {'Set number of image patches to analyze per batch. Lower values will require less RAM, but will take longer to process.'};
-            app.SegmentationminibatchsizeLabel.Position = [51 33 171 28];
+            app.SegmentationminibatchsizeLabel.Position = [51 44 171 28];
             app.SegmentationminibatchsizeLabel.Text = 'Segmentation minibatch size';
 
             % Create SemanticSegMiniBatchSizeInput
@@ -2623,14 +2653,14 @@ classdef GLASS_AI_APP_exported < matlab.apps.AppBase
             app.SemanticSegMiniBatchSizeInput.RoundFractionalValues = 'on';
             app.SemanticSegMiniBatchSizeInput.ValueDisplayFormat = '%.0f';
             app.SemanticSegMiniBatchSizeInput.Tooltip = {'Set number of images patches to classify in parallel per batch. Lower values will require less VRAM, but will increase analysis time.'};
-            app.SemanticSegMiniBatchSizeInput.Position = [226 36 73 22];
+            app.SemanticSegMiniBatchSizeInput.Position = [226 47 73 22];
             app.SemanticSegMiniBatchSizeInput.Value = 128;
 
             % Create ForceCPUCheckBox
             app.ForceCPUCheckBox = uicheckbox(app.GLASSAIParametersTab);
             app.ForceCPUCheckBox.Tooltip = {'Force GLASS-AI to use the CPU for analysis even if a compatible GPU is available.'};
             app.ForceCPUCheckBox.Text = 'Ignore GPU; use CPU only';
-            app.ForceCPUCheckBox.Position = [62 12 164 22];
+            app.ForceCPUCheckBox.Position = [62 16 164 22];
 
             % Create StainNormalizationParametersTab
             app.StainNormalizationParametersTab = uitab(app.TabGroup);
