@@ -7,12 +7,13 @@ GLASS-AI was developed using [MATLAB v2021a](https://www.mathworks.com/products/
 GLASS-AI is based on the [ResNet-18 Network](https://www.mathworks.com/matlabcentral/fileexchange/68261-deep-learning-toolbox-model-for-resnet-18-network). The program accepts hematoxylin and eosin (H&E)-stained images or digital whole slide images and outputs tumor segmentation and grading maps with accompanying spreadsheets. We trained GLASS-AI using 33 H&E-stained whole slide images from 4 different mouse models of lung adenocarcinoma. Our whole slide images were captured using a Leica Aperio ScanScope AT2 Slide Scanner at 20x magnification with a 0.5022 microns/pixel resolution. These slides were divided among and graded by 3 expert raters to produce a training data set with 36,000 annotated image patches. 
 
 ![GLASS-AI Network Architecture](https://user-images.githubusercontent.com/43050409/141231551-a65dc8c0-5cd9-4cdc-8488-9b95a634e948.png)
-Diagram of the GLASS-AI network architecture. Taken from [Lockhart *et al.*, *npj Prec Onc*, 2023](https://doi.org/10.1038/s41698-023-00419-3)
+Diagram of the GLASS-AI network architecture. Taken from [Lockhart *et al.*, *npj Prec Onc*, 2023](https://doi.org/10.1038/s41698-023-00419-3) 
+
 
 ![GLASS-AI Training Data](https://user-images.githubusercontent.com/43050409/141231991-ebf9389e-086c-4fef-86d9-dfec65c08b4a.png)
-Diagram of the data used to train GLASS-AI. Taken from [Lockhart *et al.*, *npj Prec Onc*, 2023](https://doi.org/10.1038/s41698-023-00419-3)
+Diagram of the data used to train GLASS-AI. Taken from [Lockhart *et al.*, *npj Prec Onc*, 2023](https://doi.org/10.1038/s41698-023-00419-3) [![License: CC BY 4.0](https://licensebuttons.net/l/by/4.0/80x15.png)](https://creativecommons.org/licenses/by/4.0/)
 
-The full training data set has been made available for public use on [Zenodo](doi.org/10.5281/zenodo.7967749) [![DOI](https://zenodo.org/badge/DOI/10.5281/zenodo.7967749.svg)](https://doi.org/10.5281/zenodo.7967749).
+The full training data set has been made available for public use on [Zenodo](doi.org/10.5281/zenodo.7967749) [![DOI](https://zenodo.org/badge/DOI/10.5281/zenodo.7967749.svg)](https://doi.org/10.5281/zenodo.7967749). 
 
 ## Installation
 Download and run the installer for your operating system [here](http://timex.moffitt.org/GLASS-AI/) or `Right click` > `Save Link As...` on the link your operating system here: [Mac](http://timex.moffitt.org/GLASS-AI/Installers/GLASS-AI_installer_Mac.app.zip)  |  [Windows](http://timex.moffitt.org/GLASS-AI/Installers/GLASS_AI_Installer_Win.zip). Installers are hosted by Moffitt Cancer Center due to their large file size. 
@@ -26,12 +27,18 @@ A set of demo images is also available as a `.zip` file [here](http://timex.moff
 Installation time should be < 5 minutes.
 
 ## Usage
-GLASS-AI accepts `SVS` or `TIF` files as input. These images should be captured at 20x magnification with a 0.502 microns/pixel resolution for best results.
-The steps for successfully running GLASS-AI are written in the graphic user interface (GUI), but they are as follows:
+GLASS-AI accepts `SVS` or `TIF` files as input. For best results, these images should be captured at 20x magnification with a 0.502 microns/pixel resolution.
+
+The steps for running GLASS-AI are written in the graphic user interface (GUI), but they are as follows:
+
 1. Click the `Browse` button to navigate to the directory containing the images you want to analyze.
-   - The software will populate the `File Name` table with any `.svs`, `.tif`, or `.tiff` files it finds in the selected directory.
+   * The software will populate the `File Name` table with any `.svs`, `.tif`, or `.tiff` files it finds in the selected directory.
 2. Click the `Output folder` button to navigate to the directory where you would like the output images and spreadsheets to be deposited.
 3. Select the file(s) that you want to analyze from the `File Name` table.
+	* You can select all files by clicking the 'File Name' bar.
+	* You can select multiple contiguous files by selecting the first file and then Shift+Left Clicking the last file.
+	* You can select multiple dis-contiguous files by Control + Left Click (Command + Left Click on Mac) and then Shift + Left Clicking on each file.
+		* File selection will be changed to using system dialogs in a future version to avoid this issue.
 4. Change any analysis options you wish to adjust.
    - Tooltips for each option are shown if you hover your mouse over them.
    - Depending on the memory available on your computer and the input image size, GLASS-AI may automatically enable "Low Memory Mode".
@@ -43,11 +50,29 @@ The steps for successfully running GLASS-AI are written in the graphic user inte
       - GPU acceleration is not available on Mac OS. 
     - The "Analyzing Images" step is by far the longest. The status will update for each analysis block. A dialog window will show you the progress on the current block with an estimated time to completion.
     
+### Time saver options
+Using these options will greatly speed up the analysis, at the expense of some outputs and introducing minor artifacts during smoothing.
+
+* Analysis options
+	* Increase analysis block size to the maximum your system can handle.
+	* Turn off `Preview output images`.
+	* Keep `Low memory mode` off if possible.
+	* Uncheck the box for `Assign overall grade to each tumor` <sup>*</sup>.
+* GLASS-AI parameters
+	* Increase `Patch tissue threshold` to 1 or 2%
+	* Set `Smoothing mode` to 'Hamming Window' or 'Median' <sup>**</sup>. 
+* Output Image Scaling
+	* Set all scales to `1/8`.
+	* Uncheck the box for `Segmentation Scaling` to skip making a segmentation map <sup>***</sup>. 
+
+<sup>\*</sup><small>You can calculate this in Excel if needed</small></br>
+<sup>\*\*</sup><small>This will interpolate small intermediate-grade regions in tumors with regions of different tumor grades (e.g., Grade 3 between adjacent Grade 2 and Grade 4 regions)</small></br>
+<sup>\*\*\*</sup><small>This image is particularly time-intensive to make. Recommend disabling unless you need/want to look at specific tumors later.</small> 		
 
 ## Benchmarking
-A set of H&E images of various sizes are included in each distribution of GLASS-AI in the `Demo Data` folder. Should you need to redownload the images, they are available as a `.zip` file [here](http://timex.moffitt.org/GLASS-AI/Resources/Demo_images/).
+A set of H&E images of various sizes are included in each distribution of GLASS-AI in the `Demo Data` folder. Should you need to re-download the images, they are available as a `.zip` file [here](http://timex.moffitt.org/GLASS-AI/Resources/Demo_images/).
 
-It is recommended that you try running GLASS-AI on some of these files before using your own data. Not only will this tell you if the installation worked correctly, but it will also allow you to benchmark the performance of GLASS-AI on your computer. Prior to distribution GLASS-AI was tested on a few different systems using the default analysis options, and the results from these tests are provided below, along with the hardware specifications of each computer.
+It is recommended that you try running GLASS-AI on some of these files before using your own data. Not only will this tell you if the installation worked correctly, but it will also allow you to benchmark the performance of GLASS-AI on your computer. Prior to distribution, GLASS-AI was tested on a few different systems using the default analysis options. The results from these tests are provided below, along with the hardware specifications of each computer.
 
 > Image Name | Image Size  | PC 1 Time | PC 2 Time | Mac 1 Time | Mac 2 Time
 > ----------:|------------:|:---------:|:---------:|:----------:|:---------:
@@ -80,7 +105,10 @@ It is recommended that you try running GLASS-AI on some of these files before us
 
 If you use this code for your research, please cite: Lockhart, J.H., Ackerman, H.D., Lee, K. et al. Grading of lung adenocarcinomas with simultaneous segmentation by artificial intelligence (GLASS-AI). npj Precis. Onc. 7, 68 (2023). [![DOI](https://zenodo.org/badge/DOI/10.1038/s41698-023-00419-3.svg)](https://doi.org/10.1038/s41698-023-00419-3)
 
-This software is provided under a [MIT license](https://choosealicense.com/licenses/mit/), reproduced below.
+Figures reproduced from Lockhart, *et al.*, *npj Prec. Onc.* 2023 are used under Creative Commons Attribution 4.0 International License [![License: CC BY 4.0](https://licensebuttons.net/l/by/4.0/80x15.png)](https://creativecommons.org/licenses/by/4.0/)
+
+This software is provided under an MIT license, reproduced below. [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
+
 
 ---
 
