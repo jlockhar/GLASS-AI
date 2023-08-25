@@ -1,23 +1,38 @@
 ---
 title: "GLASS-AI Analysis Summary Report"
-subtitle: "Experiment Title"
-author: "GLASS-AI version 0.9.5.1 ^[https://github.com/jlockhar/GLASS-AI]"
+subtitle: "Experiment Name"
+author: "GLASS-AI ^[https://github.com/jlockhar/GLASS-AI]"
 date: '`r format(Sys.time(), "%a %b %d %X %Y")`'
 output:
-  html_notebook:
+  html_document:
     code_folding: hide
     df_print: kable
-  html_document:
+  html_notebook:
     code_folding: hide
     df_print: kable
 editor_options:
   markdown:
     wrap: 80
-script_updated: 08/03/23
+script_updated: 08/15/23
 ---
 
 # Description
 
+
+##### Notes
+
+- Add any notes about your analysis here.
+- I strongly recommend using normalized measures, such as `proportion of tumors`, `proportion of total tumor area`, and `proportion of lung area` for your comparisons rather than `tumor counts` or `total tumor area`.
+- Graphs in `No tumor grading` tabs use the raw pixel-level grading produced by GLASS-AI for the analysis. While `Graded tumors` tabs perform analysis using the overall tumor grade assigned to each tumor based on (in this experiment) the highest tumor grade present that comprises ≥ 10% of the tumors area. 
+- Statistical tests are performed largely automatically in this report and are set up to use non-parametric methods if any significant violations of normality or homogeneity of variance are detected in the data. 
+  - The parametric tests that this report uses are fairly robust to violations of these assumptions and can be selected manually if desired by setting 'useParametric = parametric_test_individuals' in `run_omnibus_test()` calls (will be propagated to post-hoc tests automatically).  
+  - Statistical test results are provided in `Statistics Results` below the graph they apply to.
+- All of the data to generate the graphs in this analysis are contained in `Whole slide summary.xslx` and the image summary files (e.g., `492586.xlsx`). For convenience, the subset of the data used to generate each graph is provided in the `Graph Data` folder should you wish to generate your own version of the plots.
+
+
+#### Notable Results
+
+- Add your notable results here.
 
 --------------------------------------------------------------------------------
 
@@ -29,20 +44,18 @@ chooseCRANmirror(graphics = FALSE, ind = 1)
 ## First specify the packages of interest
 packages <- c(
   "tidyverse", # Data formating and manipulation
-  "viridis", # colorblind-friendly color palette
   "readxl", # read input xlsx files
   "knitr", # make tables
   "stringr", # easier string operations
   "janitor", # clean factor names in dataframes
-  "cowplot", # simplify plotting of multiple ggplot2 objects in a single frame
   "ggrepel", # add labels outside of bars in plots
   "ggpubr", # format ggplot objects
   "ggpp", # more ggplot formatting
   "rstatix", # do statistics
   "plotly", # interact with ggplot objects
-  "moments",
-  "pals"
-) # calculate skewness/kurtosis
+  "rlang", # error handling
+  "moments" # calculate skewness and kurtosis for stats summaries
+)
 ## Now load or install & load all
 package.check <- lapply(
   packages,
@@ -89,7 +102,134 @@ div.svg-container {
   margin: auto !important;
 }
 ```
+
 ```{r custom_functions, message = FALSE, warning = FALSE}
+#' add formatted labels as new column in a dataframe using lists of variable names and labels
+#' 
+#' @description
+#' Create a list of formatted labels and variables to include in plotly hoverinfo
+#' 
+#' @param xdf A dataframe that includes the columns named in `var_names`.
+#' 
+#' @param var_names A character vector of variable names to make labels for.
+#' 
+#' @param var_labels A character vector of formatted labels for each variable in `var_names`.
+#' 
+#' @param label_col_name A string for the name of the column added to `xdf` to store the formatted labels.
+#' 
+#' @returns Returns the input data frame with an additional column containing formatted labels (<b>var_label: </b> var_name </br>)
+make_formatted_labels <- function(xdf, var_names, var_labels, label_col_name){
+  xdf <- xdf %>% 
+    rowwise() %>%
+    mutate(!!label_col_name := paste0("<b>",
+    var_labels,
+    ": </b>",
+    across(all_of(var_names)),
+    "</br>",
+    collapse = ""
+  ))
+  return(xdf)
+}
+
+#' Test normality of data with and without log normalization
+#' 
+#' @description
+#' Performs a Shapiro-Wilk test of normality on data and a log normalized version of the data to determine if log normalization should be applied.
+#' 
+#' @param xdf A dataframe that includes the columns named in `xformula`.
+#' 
+#' @param xformula A formula defining the response and independent variables to be used in later analyses.
+#' 
+#' @param xbase The base to be used for log transformation (Default = 10)
+#' 
+#' @returns Returns `TRUE` if data should be log normalized and `FALSE` if it should not.
+#' 
+#' @noRd
+test_log_normalization <- function(xdf, xformula, xbase = 10) {
+  
+    # validate input classes
+  if (sum(class(xdf) == "dataframe") == 0) {
+    errorCondition("Input provided for 'dataframe' was not a dataframe")
+  }
+  if (class(xformula) == "character") {
+    xformula <- as.formula(xformula)
+  }
+  if (class(xformula) != "formula") {
+    errorCondition("Input provided for 'formula' was not of class 'formula' or 'character'")
+  }
+
+  # get grouping variables from formula
+  formulaVars <- all.vars(xformula)
+  yvar <- formulaVars[1]
+  xvars <- formulaVars[-1]
+
+  # remove any grouping from dataframe
+  xdf <- xdf %>% ungroup()
+  
+  # test for normal distribution of data
+  #-group data by independent variable(s) from formula
+  norm_test <- NULL
+  norm_violation <- NULL
+  norm_violation_count <- 0
+  tryCatch(
+    {
+      norm_test <- permissive_shapiro(xdf, xformula)
+      norm_violation_count <- sum(norm_test$p.adj < 0.05, na.rm = TRUE)
+      norm_violation <- norm_violation_count >= 1
+    },
+    error = function(err) { # catch
+      parent_error <- trace_error_parent(err)
+      norm_test <- paste(
+        "Could not compute Shapiro's test for normality due to an error.
+                           Presuming that data is not normally distributed.\n",
+        parent_error$message
+      )
+      norm_violation <- TRUE
+    }
+  )
+  
+  # no need to log normalize if data are already normally distributed
+  if (!norm_violation) {
+    return (FALSE)
+  }
+  
+  # test for log-normal distribution of data
+  #-group data by independent variable(s) from formula
+  log_norm_test <- NULL
+  log_norm_violation <- NULL
+  log_norm_violation_count <- 0
+  log_xdf <- xdf %>% mutate(!!yvar := log(.data[[yvar]], base = xbase))
+  tryCatch(
+    {
+      log_norm_test <- permissive_shapiro(log_xdf, xformula)
+      log_norm_violation_count <- sum(log_norm_test$p.adj < 0.05, na.rm = TRUE)
+      log_norm_violation <- log_norm_violation_count >= 1
+    },
+    error = function(err) { # catch
+      parent_error <- trace_error_parent(err)
+      log_norm_test <- paste(
+        "Could not compute Shapiro's test for normality due to an error.
+                           Presuming that data is not normally distributed.\n",
+        parent_error$message
+      )
+      log_norm_violation <- TRUE
+    }
+  )
+  
+  # log normalize if it works
+  if (!log_norm_violation) { 
+    return(TRUE)
+  }
+  
+  # log normalize if its better for more groups than not log normalizing
+  if (log_norm_violation_count < norm_violation_count) {
+    return(TRUE) 
+  } else {
+    return(FALSE)
+  }
+  
+}
+
 #' Convert a list of character vectors into a single formatted character vector with separating punctuation and conjunction.
 #' 
 #' @description
@@ -164,7 +304,7 @@ import_individual_slide_tumors <- function(dir_path, image_info, image_id_column
   # get provided image IDs from slide_info
   if ("data.frame" %in% class(image_info)){
     if(image_id_column %in% colnames(image_info)){
-      provided_slide_ids <- image_info[image_id_column]
+      provided_slide_ids <- image_info[[image_id_column]]
     } else {
       abort(paste0("Column `",image_id_column, "` doesn't exist in the provided `image_info_df`."))
     }
@@ -178,14 +318,16 @@ import_individual_slide_tumors <- function(dir_path, image_info, image_id_column
   file_list <- dir(dir_path, pattern = "\\.(xlsx|xls|csv|tsv)$")
 
   # filter to files that match an image_id value in slide_info
-  matched_files <- tools::file_path_sans_ext(file_list) %in% provided_slide_ids
+  matched_files <- tools::file_path_sans_ext(file_list) %in% as.character(provided_slide_ids)
   file_list <- file_list[matched_files]
   
   # read in first file as-is to get headers then concatentate remaining files
   merged_tumor_areas <- read_table_file(file.path(dir_path, file_list[1]))
+  merged_tumor_areas$image_id = tools::file_path_sans_ext(file_list[1]) #temporary fix for image_id not including "_adjusted" after manual adjustment
   for (file in file_list[-1]) {
     slide_data <- read_table_file(file.path(dir_path, file))
-    merged_tumor_areas <- rbind(merged_tumor_areas, slide_data)
+    slide_data$image_id = tools::file_path_sans_ext(file) #temporary fix for image_id not including "_adjusted" after manual adjustment
+    merged_tumor_areas <- full_join(merged_tumor_areas, slide_data)
   }
   return(merged_tumor_areas)
 }
@@ -272,40 +414,44 @@ permissive_shapiro <- function(xdf, xformula, p.adj.method = "holm") {
   yvar <- formulaVars[1]
   xvars <- formulaVars[-1]
 
+  group_validation <- validate_groups(xdf, xformula, min_count = 3, max_count = 5000, exclude_zero_var = TRUE)
 
-  group_tally <- xdf %>%
-    group_by(across(all_of(xvars))) %>%
-    tally()
-
-  valid_groups <- group_tally %>% filter(n >= 3, n < 5000)
-  small_groups <- group_tally %>%
-    filter(n < 3) %>%
+  #add explanations for excluded groupings
+  group_validation[["small_groups"]] <- group_validation[["small_groups"]] %>%
     mutate(
       variable = yvar, statistic = NA, p = NA,
       note = "Too few individuals in group"
     )
-  big_groups <- group_tally %>%
-    filter(n >= 5000) %>%
+  group_validation[["big_groups"]] <- group_validation[["big_groups"]] %>%
     mutate(
       variable = yvar, statistic = NA, p = NA,
       note = "Too many individuals in group"
     )
-
-  if (nrow(valid_groups) > 0) {
+  group_validation[["zero_var_groups"]] <- group_validation[["zero_var_groups"]] %>%
+    mutate(
+      variable = yvar, statistic = NA, p = NA,
+      note = "Zero variability in group"
+    )
+    
+    
+  if (nrow(group_validation[["valid_groups"]]) > 0) {
     shapiro_result <- suppressMessages(
-      xdf %>% semi_join(valid_groups, by = xvars) %>%
+      xdf %>% semi_join(group_validation[["valid_groups"]], by = xvars) %>%
         group_by(across(all_of(xvars))) %>% shapiro_test(!!as.name(yvar))
     )
     shapiro_result <- suppressMessages(
-      full_join(shapiro_result, valid_groups) %>%
-        full_join(small_groups) %>%
-        full_join(big_groups) %>%
+      full_join(shapiro_result, group_validation[["valid_groups"]]) %>%
+        full_join(group_validation[["small_groups"]]) %>%
+        full_join(group_validation[["big_groups"]]) %>%
+        full_join(group_validation[["zero_var_groups"]]) %>%
         adjust_pvalue(method = p.adj.method) %>%
         relocate(p.adj, n, note, .after = p) %>%
         arrange(across(all_of(xvars)))
     )
   } else {
-    shapiro_result <- suppressMessages(full_join(small_groups, big_groups) %>%
+    shapiro_result <- suppressMessages(
+      full_join(group_validation[["small_groups"]], group_validation[["big_groups"]]) %>%
+      full_join(group_validation[["zero_var_groups"]]) %>%
       adjust_pvalue(method = p.adj.method) %>%
       relocate(p.adj, n, note, .after = p) %>%
       arrange(across(all_of(xvars))))
@@ -314,7 +460,7 @@ permissive_shapiro <- function(xdf, xformula, p.adj.method = "holm") {
   return(shapiro_result)
 }
 
-validate_groups <- function(xdf, xformula) {
+validate_groups <- function(xdf, xformula, min_count = 3, max_count = Inf, exclude_zero_var = TRUE) {
   # get grouping variables from formula
   formulaVars <- all.vars(xformula)
   yvar <- formulaVars[1]
@@ -323,8 +469,44 @@ validate_groups <- function(xdf, xformula) {
   group_tally <- xdf %>%
     group_by(across(all_of(xvars))) %>%
     tally()
-  valid_groups <- group_tally %>% filter(n >= 3)
-  return(valid_groups)
+  
+  zero_var_groups <- suppressMessages( 
+    xdf %>% 
+    group_by(across(all_of(xvars))) %>%
+    summarise(variance = sd(!!as.name(yvar))) %>%
+    filter(variance == 0)
+  )
+  
+  zero_var_groups <-  suppressMessages(
+    group_tally %>% 
+    semi_join(zero_var_groups) %>%
+    mutate(
+      variable = yvar, statistic = NA, p = NA,
+      note = "Zero variability in group"
+    )
+  )
+
+  small_groups <- group_tally %>%
+    filter(n < min_count) 
+  
+  big_groups <- group_tally %>%
+    filter(n >= max_count) 
+  
+    valid_groups <- suppressMessages( 
+    group_tally %>% 
+    anti_join(small_groups) %>%
+    anti_join(big_groups) %>%
+    anti_join(zero_var_groups)
+  )
+    
+  out_list <- list(
+    "valid_groups" = valid_groups,
+    "small_groups" = small_groups,
+    "big_groups" = big_groups,
+    "zero_var_groups" = zero_var_groups
+  )
+  
+  return(out_list)
 }
 
 trace_error_parent <- function(error_obj) {
@@ -416,18 +598,23 @@ print_statistics <- function(stats_summary, omni_test, posthoc_test) {
   cat("\n</details>\n")
 }
 
-#' Format a specific trace or type of trace in a plotly object.
+#' Format a specific trace or traces in a plotly object.
 #' 
 #' @description
-#' Pass a list of modifications to selected traces in a plotly object. Traces can be filtered by 
+#' Pass a list of modifications to selected traces in a plotly object. Traces can be filtered by
+#' type, mode, and/or or name using regular expressions. 
 
-#' @param dir_path Formatted character vector containing the path to the directory with the image analysis files produced by GLASS-AI
+#' @param plotly_object Plotly object to be formatted.
 #' 
-#' @param image_info Data frame or character vectors containing image IDs to be included. 
+#' @param filter_type The `type` of the plotly trace(s) to be formatted (e.g., "box") 
 #' 
-#' @param image_id_column  Name of the column in `image_info` data frame that contains image IDs to be included.
+#' @param filter_mode The `mode` of the plotly trace(s) to be formatted (e.g., "markers")
 #' 
-#' @returns A data frame containing all individual tumor records found in `dir_path`.
+#' @param filter_name A regular expression used to match the `name` of the plotly trace(s) to be formatted.
+#' 
+#' @param ...  Arguments to be merged into the plotly trace(s) using `utils::modifyList()`
+#' 
+#' @returns A plotly object with the target 
 #' 
 #' @noRd
 format_plotly_trace <- function(plotly_object, filter_type = NULL, filter_mode = NULL, filter_name = NULL, ...) {
@@ -440,9 +627,9 @@ format_plotly_trace <- function(plotly_object, filter_type = NULL, filter_mode =
   for (plotly_trace in plotly_object$x$data) {
     trace_index <- trace_index + 1
     if ("type" %in% names(plotly_trace) &&
-      (plotly_trace$type == filter_type || is.null(filter_type)) &&
-      (plotly_trace$mode == filter_mode || is.null(filter_mode)) &&
-      (plotly_trace$name == filter_name || is.null(filter_name))){
+      (is.null(filter_type) || plotly_trace$type == filter_type) &&
+      (is.null(filter_mode) || plotly_trace$mode == filter_mode) &&
+      (is.null(filter_name) || grepl(filter_name,plotly_trace$name))){
       found_trace <- TRUE
       plotly_object$x$data[[trace_index]] <- modifyList(plotly_object$x$data[[trace_index]], input_list)
     }
@@ -454,19 +641,27 @@ format_plotly_trace <- function(plotly_object, filter_type = NULL, filter_mode =
   return(plotly_object)
 }
 
-format_plotly_legend <- function(plotly_object, legend_group_variable, level_label_list, legend_label_variable = "label", make_multiline = F, split_delimiter = ":") {
+format_plotly_legend <- function(plotly_object, legend_group_variable, level_label_list, legend_label_variable = "label", make_multiline = F, split_delimiter = ":", verbose = FALSE) {
   trace_index <- 0
   for (plotly_trace in plotly_object$x$data) {
     trace_index <- trace_index + 1
     # skip "empty" traces (i.e, no name)
     if (plotly_trace$name != "") {
       if (make_multiline) {
+        old_name <- plotly_object$x$data[[trace_index]]$name
         plotly_object$x$data[[trace_index]]$name <-
           level_label_list[[legend_label_variable]][[plotly_trace$name]] %>%
           str_replace_all(., split_delimiter, "</br>") %>%
           paste0("</br>", .)
+        if (verbose) {
+          message(paste0(old_name,":",plotly_object$x$data[[trace_index]]$name))
+        }
       } else {
+        old_name <- plotly_object$x$data[[trace_index]]$name
         plotly_object$x$data[[trace_index]]$name <- level_label_list[[legend_label_variable]][[plotly_trace$name]]
+        if (verbose) {
+          message(paste0(old_name,":",plotly_object$x$data[[trace_index]]$name))
+        }
       }
       plotly_object$x$data[[trace_index]]$legendgroup <-
         level_label_list[[legend_group_variable]][[plotly_trace$name]]
@@ -634,6 +829,20 @@ run_omnibus_test <- function(xdf, xformula, useParametric = "auto", useWelch = "
     norm_violation <- stats_summary[[4]]
   }
 
+  if (class(useParametric) == "numeric"){
+    if (useParametric > 1 || useParametric < 0) {
+      warning("Input value for 'useParametric' must be between 0 and 1.
+              Defaulting to 0 ('auto').")
+      useParametric <- "auto"
+    } else {
+      norm_violation_count <- sum(stats_summary[[5]]$`p.adj` < 0.05)
+      norm_violation_proportion <- norm_violation_count / length(stats_summary[[5]]$`p.adj`)
+      if (norm_violation_proportion > useParametric) {
+        useParametric = FALSE
+      } else { useParametric = parametric_test_individuals }
+    }
+  
+  }
   if (class(useParametric) != "logical" & useParametric != "auto") {
     warning("Input value for 'useParametric' must be TRUE,FALSE or 'auto'.
             Defaulting to 'auto'.")
@@ -648,9 +857,10 @@ run_omnibus_test <- function(xdf, xformula, useParametric = "auto", useWelch = "
   }
 
   # filter for groups of valid sizes (>=3)
-  valid_groups <- validate_groups(xdf, xformula)
+  group_validation <- validate_groups(xdf, xformula, min_count = 3)
+  
   valid_xdf <- suppressMessages(
-    xdf %>% semi_join(valid_groups, by = xvars) %>%
+    xdf %>% semi_join(group_validation[["valid_groups"]], by = xvars, copy = TRUE) %>%
       # group by variables to reduce comparisons to a single contrast
       group_by(across(all_of(xvars[-1]))) %>%
       # remove levels that don't have multiple groups
@@ -712,17 +922,12 @@ run_omnibus_test <- function(xdf, xformula, useParametric = "auto", useWelch = "
       omni.test$method <- "ANOVA"
     }
   } else {
-    # get grouping variables from formula
-    formulaVars <- all.vars(xformula)
-    yvar <- formulaVars[1]
-    xvars <- formulaVars[-1]
-
     omni.test <- valid_xdf %>%
       # group by variables to reduce comparisons to a single contrast
-      group_by(across(all_of(xvars[-1]))) %>%
-      # remove levels that don't have multiple groups
-      filter(n_distinct(across(xvars[1])) > 1) %>%
-      kruskal_test(as.formula(paste(yvar, "~", xvars[1]))) %>%
+      {if (length(xvars) > 1)
+      group_by(.,across(all_of(xvars[1]))) %>%
+          kruskal_test(.,as.formula(paste(yvar, "~", xvars[-1])))
+      else kruskal_test(.,as.formula(paste(yvar, "~", xvars[1]))) } %>%
       add_significance("p")
     omni.test$method <- "Kruskal-Wallis"
     # reset formula back to original
@@ -810,6 +1015,7 @@ read_table_file <- function(file_path) {
   } else if (file_type == "csv") {
     read_csv(file_path)
   } else {
+    warning(file_path)
     stop("File type not supported.")
   }
 }
@@ -947,46 +1153,45 @@ plotlistlist2tabs <- function(plot_list_list, caption_list,
 ```{r parameter_definition, message = FALSE, warning = FALSE}
 #### FILES####
 # path to directory where files are stored
-dir_path <- "/Users/4470641/Desktop/GLASS-AI reports/4 group test/"
+dir_path <- "path/to/analysis/files"
 # path to slide info file
-path_to_Slide_Info <- paste0(dir_path, "Slide IDs.xlsx")
+path_to_Slide_Info <- file.path(dir_path, "Slide IDs.xlsx")
 # path to whole slide summary file
-path_to_slide_areas <- paste0(dir_path, "Whole slide summary.xlsx")
-# path to merged tumor area file or directory containing indivudal slide results
-path_to_tumor_areas <- paste0(dir_path, "merged_areas.csv")
-# define path to folder holding individual IHC stain subfolders labeled by stain
-path_to_ihc_analysis_folder <- ""
+path_to_slide_areas <- file.path(dir_path, "Whole slide summary.xlsx")
+# path to merged tumor area file or directory containing individual slide results
+path_to_tumor_areas <- file.path(dir_path,"GLASS-AI output")
+# define path to folder holding individual IHC stain sub folders labeled by stain
+path_to_ihc_analysis_folder <- "" #file.path(dir_path,"IHC stains")
 # path to GLASS-AI logfile if you want to include in report
-path_to_logfile <- ""
+path_to_logfile <- "" #file.path(dir_path, "GLASS-AI output", "GLASS-AI_log_####.txt")
 # define output location for data tables used to make each graph
-path_to_graph_data <- paste0(dir_path, "Graph Data")
+path_to_graph_data <- file.path(dir_path, "Graph Data")
 
 
 #### FILTERING####
 # define optional tumor size threshold in sq. micron
-tumor_size_threshold <- 0
+tumor_size_threshold <- 500
 
 #### GROUPING####
 # define variables to use for grouping
-full_grouping_vars <- c("genotype")
-full_grouping_vars_labels <- c("Genotype")
+# grouping variable names should be the column name in the `Slide_Info` spreadsheet
+## full_grouping_vars <- c("grouping_var1","grouping_var2",... "grouping_varN")
+# grouping variable labels should be the formatted label for each grouping variable
+full_grouping_vars <- c("grouping_var")
+full_grouping_vars_labels <- c("Grouping Variable")
 
-# define order of groups at each level
+# define order of groups within each grouping variable
+# var_name = c(var_val1, var_val2,... var_valN)
+# repeat for each variable included in `full_grouping_vars` above
 full_grouping_order <- list(
-  genotype = c(
-    "K",
-    "dNK",
-    "KP",
-    "dNKP"
+  genotype_abbreviation = c(
+    "group1",
+    "group2",
+    "group3"
   )
 )
 
-full_grouping_order_labels <- list(genotype = c(
-    "K",
-    "dNK",
-    "KP",
-    "dNKP"
-  ))
+full_grouping_order_labels <- full_grouping_order
 
 full_grouping_label <- paste(full_grouping_vars_labels, collapse = " : ")
 full_grouping_grade_label <- paste(full_grouping_label, "Tumor Grade", sep = " : ")
@@ -1002,16 +1207,22 @@ subindividual_var <- "image_id" # title of sub-individual variable column in inp
 subindividual_var_label <- "Slide ID"
 subindividual_unit <- "Slide"
 
+#define variables and labels to be used for adding information about individuals to plotly hoverinfo
+#set these to be the same as full_grouping_vars and full_grouping_vars_labels to omit
+## leaving them empty (or NA, NULL, etc.) breaks select() calls in the report.
+sample_info_vars <- c("info1,info2")
+sample_info_vars_labels <- c("Information 1","Information 2")
+
 
 #### GRAPHING###
 # define color for each group using colorblind safe palette
-group_colors <- c25 <- c(
+group_colors <-  c(
+  "black",
   "dodgerblue2",
   "#E31A1C", # red
   "green4",
   "#6A3D9A", # purple
   "#FF7F00", # orange
-  "black",
   "gold1",
   "skyblue2",
   "#FB9A99", # lt pink
@@ -1044,13 +1255,26 @@ plotly_margins <- list(l = 50, r = 50, b = 50, t = 50)
 
 #### STATS####
 # define comparisons of interest for statistics
+# multiple grouping variables are separated by a ":"
+# use the same values as in `full_grouping_order` above
 full_group_comparisons <- list(
-  c("K", "dNK"),
-  c("KP", "dNKP")
+  c("group1","group2"),
+  c("group1","group3"),
+  c("group2","group3")
 )
 
 # skip statistics if you know they will not work (i.e., < 3 samples in groups)
 skip_stats <- FALSE
+
+# set global parametric/non-parametric test choices
+# TRUE: use parametric, FALSE: use non-parametric, "auto": use parametric if no violation of normality (strict)
+# values >= 0 and <= 1: use parametric if less than this proportion of groups violate normality assumption 
+## this means that useParametric = 1 is equivalent to TRUE and useParametric = 0 is equivalent to FALSE
+
+# comparisons between groups of individuals (Graphs 001 - 027)
+parametric_test_individuals = 0
+# comparisons between groups of individual tumors (Graphs 027 - 040)
+parametric_test_tumors = FALSE
 
 # generate pairwise comparisons for group:tumor_grade combinations
 full_group_tumor_grade_comparisons <- list()
@@ -1073,7 +1297,7 @@ ihc_stain_labels <- c()
 ## Data Import
 
 ```{r data_import, message = FALSE, warning = FALSE}
-# add logfile
+# add truncated logfile
 if (file.exists(path_to_logfile)) {
   logfile <- readLines(path_to_logfile)
   image_starts <- which(grepl("----- Start image",logfile))+1
@@ -1148,7 +1372,7 @@ if ("slide_id" %in% colnames(Slide_Areas)) {
 if (file.exists(path_to_tumor_areas) && !dir.exists(path_to_tumor_areas)) {
   Tumor_Areas <- read_table_file(path_to_tumor_areas)
 } else if (dir.exists(path_to_tumor_areas)) {
-  Tumor_Areas <- import_individual_slide_tumors(path_to_tumor_areas, Slide_Info)
+  Tumor_Areas <- import_individual_slide_tumors(path_to_tumor_areas, as.character(Slide_Info$image_id))
 }
 
 # convert names to snake_case and convert percentages to decimals
@@ -1207,6 +1431,8 @@ Slide_Areas <- Slide_Areas %>% setNames(gsub("g1", "grade1", names(.))) # change
 Slide_Areas <- Slide_Areas %>% setNames(gsub("g2", "grade2", names(.))) # change any 'g2' to 'grade2'
 Slide_Areas <- Slide_Areas %>% setNames(gsub("g3", "grade3", names(.))) # change any 'g3' to 'grade3'
 Slide_Areas <- Slide_Areas %>% setNames(gsub("g4", "grade4", names(.))) # change any 'g4' to 'grade4'
+Slide_Areas <- Slide_Areas %>% setNames(gsub("g5", "grade5", names(.))) # change any 'g5' to 'grade5'
+
 
 # copy values to "individual_id" column and move to first column
 Slide_Areas <- Slide_Areas %>%
@@ -1230,8 +1456,16 @@ Slide_Areas <- Slide_Areas %>%
     subindividual_id = factor(subindividual_id, levels = unique(subindividual_id))
   )
 
+
+
 Slide_Areas <- Slide_Areas %>% rowid_to_column("slide_number")
 slide_number_to_id <- Slide_Areas$image_id # use this for x-axis to arrange slides
+
+#add dummy grade5 columns if not present in slide area file
+if (sum(str_count(colnames(Slide_Areas),"grade5")) < 2) { 
+  Slide_Areas$grade5_percentage_in_image = 0
+  Slide_Areas$grade5_area_in_image = 0
+}
 
 
 ## Pre-processing of Tumor_Areas
@@ -1243,22 +1477,26 @@ Tumor_Areas <- Tumor_Areas %>% setNames(gsub("g4", "grade4", names(.))) # change
 Tumor_Areas <- Tumor_Areas %>% setNames(gsub("g5", "grade5", names(.))) # change any 'g5' to 'grade5'
 
 tumor_grade_x_limits = c("1","2","3","4")
+#add dummy grade5 columns if not present in tumor files
 if (sum(str_count(colnames(Tumor_Areas),"grade5")) < 2) { 
   Tumor_Areas$grade5_percentage = 0
   Tumor_Areas$grade5_area = 0
-  tumor_grade_labels <- tumor_grade_labels[-1]
+
   count_tumor_grades_analyzed <- 4
-  tumor_grade_colors <- tumor_grade_colors[-1]
+
 } else {
   tumor_grade_x_limits <- c(tumor_grade_x_limits,"5")
   count_tumor_grades_analyzed <- 5
+  Tumor_Areas <- Tumor_Areas %>% mutate(grade5_area = ifelse(is.na(grade5_area), 0, grade5_area),
+                                        grade5_percentage = ifelse(is.na(grade5_percentage), 0, grade5_percentage)
+                                                                   )
 }
 
 
 
 # map animal group to each tumor based on image_id; relocate group column to after image_id
 Tumor_Areas <- Tumor_Areas %>%
-  left_join(select(Slide_Areas, "full_group", full_grouping_vars, "image_id", "slide_number", "individual_id", "subindividual_id"),
+  left_join(select(Slide_Areas, "full_group", full_grouping_vars, sample_info_vars, "slide_number", "image_id", "individual_id", "subindividual_id"),
     by = c("image_id" = "image_id"),
     suffix = c("", ".y")
   ) %>%
@@ -1342,8 +1580,6 @@ Tumor_Areas <- Tumor_Areas %>%
     as.character(tumor_id),
     sep = "."
   ))
-
-Tumor_Areas <- Tumor_Areas %>% mutate(group_grade = paste0(full_group, ":", tumor_grade))
 ```
 
 ``` {r plot_formatting, include = FALSE}
@@ -1351,7 +1587,7 @@ Tumor_Areas <- Tumor_Areas %>% mutate(group_grade = paste0(full_group, ":", tumo
 # get combinations of group and tumor_grade
 full_group_count <- nrow(full_group_list)
 full_group_tumor_grade_level_cross <-
-  expand_grid(full_group_list, c(1:count_tumor_grades_analyzed))
+  expand_grid(full_group_list, c(1:5))
 
 
 # (full_group,tumor_grade)
@@ -1371,12 +1607,12 @@ grouping_levels <- c(full_group_tumor_grade_levels, tumor_grade_full_group_level
 full_group_labels <- expand_grid(!!!full_grouping_order_labels) %>%
   unite("label", sep = ":")
 full_group_tumor_grade_labels <- expand_grid(full_group_labels, rev(tumor_grade_labels)) %>% unite("label", sep = ":")
-full_group_tumor_grade_labels <- setNames(rep(full_group_tumor_grade_labels[[1]], nrow(full_group_labels)), grouping_levels)
+full_group_tumor_grade_labels <- setNames(rep(full_group_tumor_grade_labels[[1]], 2), grouping_levels)
 
 group_label_list <- setNames(
   rep(full_group_labels[[1]],
-    full_group_count,
-    each = count_tumor_grades_analyzed
+    2,
+    each = 5
   ),
   grouping_levels
 )
@@ -1397,7 +1633,7 @@ full_group_grade_info_list <- setNames(
   c("label", "tumor_grade", "full_group")
 )
 full_group_info_list <- setNames(list(setNames(full_group_labels[[1]], full_group_list[[1]])), "full_group")
-tumor_grade_info_list <- setNames(list(setNames(tumor_grade_labels, c(1:count_tumor_grades_analyzed))), "tumor_grade")
+tumor_grade_info_list <- setNames(list(setNames(tumor_grade_labels, c(1:5))), "tumor_grade")
 rm(group_tumor_grade_level_cross, group_tumor_grade_levels, tumor_grade_group_levels, grouping_levels, group_tumor_grade_labels, group_label_list, tumor_grade_label_list)
 
 present_full_group_labels <- data.frame(label = full_group_labels$label[full_group_labels$label %in% Slide_Areas$full_group])
@@ -1809,32 +2045,59 @@ kable(as.data.frame(matrix(unlist(full_group_comparisons), ncol = 2, byrow = TRU
 
 ## Data Filtering
 
-```{r, message = FALSE, warning= FALSE}
+```{r tumor_size_filtering, message = FALSE, warning= FALSE}
 if (tumor_size_threshold > 0) {
   Tumor_Areas <- Tumor_Areas %>% filter(total_tumor_area >= tumor_size_threshold)
-  cat(paste(c("Filtered out tumors below ", tumor_size_threshold, "sq. microns."), collapse = " "))
+  cat(paste(c("Filtered out tumors below", tumor_size_threshold, "sq. microns."), collapse = " "))
+  
   filtered_tumor_totals <- Tumor_Areas %>%
     group_by(image_id) %>%
-    summarise(
-      grade1_percentage_in_slide = sum(grade1_area) / sum(total_tumor_area),
-      grade2_percentage_in_slide = sum(grade2_area) / sum(total_tumor_area),
-      grade3_percentage_in_slide = sum(grade3_area) / sum(total_tumor_area),
-      grade4_percentage_in_slide = sum(grade4_area) / sum(total_tumor_area),
-      grade1_area_in_slide = sum(grade1_area),
-      grade2_area_in_slide = sum(grade2_area),
-      grade3_area_in_slide = sum(grade3_area),
-      grade4_area_in_slide = sum(grade4_area),
-      total_tumor_area_in_slide = sum(total_tumor_area)
-    )
-  Slide_Areas$grade1_percentage_in_slide[match(filtered_tumor_totals$image_id, Slide_Areas$image_id)] <- filtered_tumor_totals$grade1_percentage_in_slide
-  Slide_Areas$grade2_percentage_in_slide[match(filtered_tumor_totals$image_id, Slide_Areas$image_id)] <- filtered_tumor_totals$grade2_percentage_in_slide
-  Slide_Areas$grade3_percentage_in_slide[match(filtered_tumor_totals$image_id, Slide_Areas$image_id)] <- filtered_tumor_totals$grade3_percentage_in_slide
-  Slide_Areas$grade4_percentage_in_slide[match(filtered_tumor_totals$image_id, Slide_Areas$image_id)] <- filtered_tumor_totals$grade4_percentage_in_slide
-  Slide_Areas$grade1_area_in_slide[match(filtered_tumor_totals$image_id, Slide_Areas$image_id)] <- filtered_tumor_totals$grade1_area_in_slide
-  Slide_Areas$grade2_area_in_slide[match(filtered_tumor_totals$image_id, Slide_Areas$image_id)] <- filtered_tumor_totals$grade2_area_in_slide
-  Slide_Areas$grade3_area_in_slide[match(filtered_tumor_totals$image_id, Slide_Areas$image_id)] <- filtered_tumor_totals$grade3_area_in_slide
-  Slide_Areas$grade4_area_in_slide[match(filtered_tumor_totals$image_id, Slide_Areas$image_id)] <- filtered_tumor_totals$grade4_area_in_slide
-  Slide_Areas$total_tumor_area[match(filtered_tumor_totals$image_id, Slide_Areas$image_id)] <- filtered_tumor_totals$total_tumor_area
+    mutate(
+      grade1_area_in_image = replace_na(sum(grade1_area),0),
+      grade2_area_in_image = replace_na(sum(grade2_area),0),
+      grade3_area_in_image = replace_na(sum(grade3_area),0),
+      grade4_area_in_image = replace_na(sum(grade4_area),0),
+      grade5_area_in_image = replace_na(sum(grade5_area),0),
+      total_tumor_area_in_image = replace_na(sum(total_tumor_area),0),
+      grade1_percentage_in_image = replace_na(grade1_area_in_image / total_tumor_area_in_image,0),
+      grade2_percentage_in_image = replace_na(grade2_area_in_image / total_tumor_area_in_image,0),
+      grade3_percentage_in_image = replace_na(grade3_area_in_image / total_tumor_area_in_image,0),
+      grade4_percentage_in_image = replace_na(grade4_area_in_image / total_tumor_area_in_image,0),
+      grade5_percentage_in_image = replace_na(grade5_area_in_image / total_tumor_area_in_image,0),
+      number_of_tumors = n()
+    ) %>%
+    add_count(image_id,tumor_grade, name = "number_of_graded_tumors") %>% 
+    group_by(image_id,tumor_grade) %>%
+    slice(1) %>%
+    select(
+      image_id,
+      grade1_percentage_in_image,
+      grade2_percentage_in_image,
+      grade3_percentage_in_image,
+      grade4_percentage_in_image,
+      grade5_percentage_in_image,
+      grade1_area_in_image,
+      grade2_area_in_image,
+      grade3_area_in_image,
+      grade4_area_in_image,
+      grade5_area_in_image,
+      total_tumor_area_in_image,
+      number_of_tumors,
+      number_of_graded_tumors) %>% 
+    pivot_wider(names_from = tumor_grade, names_glue = "grade{tumor_grade}_count_in_image", values_from = number_of_graded_tumors)
+  
+  Slide_Areas$number_of_tumors[match(filtered_tumor_totals$image_id, Slide_Areas$image_id)] <- filtered_tumor_totals$number_of_tumors
+  Slide_Areas$grade1_percentage_in_image[match(filtered_tumor_totals$image_id, Slide_Areas$image_id)] <- filtered_tumor_totals$grade1_percentage_in_image
+  Slide_Areas$grade2_percentage_in_image[match(filtered_tumor_totals$image_id, Slide_Areas$image_id)] <- filtered_tumor_totals$grade2_percentage_in_image
+  Slide_Areas$grade3_percentage_in_image[match(filtered_tumor_totals$image_id, Slide_Areas$image_id)] <- filtered_tumor_totals$grade3_percentage_in_image
+  Slide_Areas$grade4_percentage_in_image[match(filtered_tumor_totals$image_id, Slide_Areas$image_id)] <- filtered_tumor_totals$grade4_percentage_in_image
+  Slide_Areas$grade5_percentage_in_image[match(filtered_tumor_totals$image_id, Slide_Areas$image_id)] <- filtered_tumor_totals$grade5_percentage_in_image
+  Slide_Areas$grade1_area_in_image[match(filtered_tumor_totals$image_id, Slide_Areas$image_id)] <- filtered_tumor_totals$grade1_area_in_image
+  Slide_Areas$grade2_area_in_image[match(filtered_tumor_totals$image_id, Slide_Areas$image_id)] <- filtered_tumor_totals$grade2_area_in_image
+  Slide_Areas$grade3_area_in_image[match(filtered_tumor_totals$image_id, Slide_Areas$image_id)] <- filtered_tumor_totals$grade3_area_in_image
+  Slide_Areas$grade4_area_in_image[match(filtered_tumor_totals$image_id, Slide_Areas$image_id)] <- filtered_tumor_totals$grade4_area_in_image
+  Slide_Areas$grade5_area_in_image[match(filtered_tumor_totals$image_id, Slide_Areas$image_id)] <- filtered_tumor_totals$grade5_area_in_image
+  Slide_Areas$total_tumor_area_in_image[match(filtered_tumor_totals$image_id, Slide_Areas$image_id)] <- filtered_tumor_totals$total_tumor_area_in_image
 } else {
   cat("Not filtering tumors based on individual tumor size.")
 }
@@ -1857,7 +2120,7 @@ if (length(Slide_Areas_unmapped$image_id) > 0 && length(Slide_Areas$image_id) > 
     length(Tumor_Areas_unmapped$image_id), "tumors that were unable to be grouped based on the selected grouping variable.
       \nThese slides and their tumors will be excluded from analysis."
   ), collapse = " "))
-  kable(select(Slide_Areas_unmapped, "image_id", "animal_id", group_var, "number_of_tumors"), caption = "Ungrouped Slides")
+  kable(select(Slide_Areas_unmapped, "image_id", "animal_id", full_group, "number_of_tumors"), caption = "Ungrouped Slides")
 } else if (length(Slide_Areas_unmapped$image_id) > 0 && length(Slide_Areas$image_id) == 0) {
   cat("No slides were succesfully grouped based on selected grouping variable.")
 } else {
@@ -1903,7 +2166,7 @@ if ("exclude_reason" %in% colnames(Slide_Info)) {
       length(Tumor_Areas_excluded$image_id), "tumors that were manually flagged for exclusion."
     )))
     cat("\nThese slides are highlighted in red in the Panel A below and excluded from further analyses.")
-    kable(select(Slide_Areas_excluded, "image_id", "animal_id", group_var, "number_of_tumors", "exclude_reason"), caption = "Excluded slides")
+    kable(select(Slide_Areas_excluded, "image_id", "animal_id", full_group, "number_of_tumors", "exclude_reason"), caption = "Excluded slides")
   } else {
     cat("No slides were manually flagged for exclusion.")
   }
@@ -1947,19 +2210,18 @@ graph_data <- Slide_Areas %>%
     subindividual_id,
     full_group,
     all_of(full_grouping_vars),
+    all_of(sample_info_vars),
     number_of_tumors
-  )
+  ) 
 
 # no stats for this graph
 plot1 <- graph_data %>%
   rowwise() %>%
-  mutate(grouping_labels = paste0("<b>",
-    full_grouping_vars_labels,
-    ": </b>",
-    across(all_of(full_grouping_vars)),
-    "</br>",
-    collapse = ""
-  )) %>%
+  make_formatted_labels(full_grouping_vars,full_grouping_vars_labels,"grouping_labels") %>%
+  make_formatted_labels(sample_info_vars,sample_info_vars_labels,"sample_info_labels") %>%
+  group_by(individual_id) %>%
+  mutate(subindividual_count = n()) %>% 
+  ungroup() %>%
   ggplot(aes(
     x = individual_id,
     y = number_of_tumors,
@@ -1969,18 +2231,21 @@ plot1 <- graph_data %>%
       "</br>",
       "<b>", individual_var_label, ": </b>", individual_id, "</br>",
       "<b>", subindividual_var_label, ": </b>", subindividual_id, "</br>",
-      grouping_labels,
+      grouping_labels, sample_info_labels,
       "<b>Tumor Count: </b>", number_of_tumors
     )
-  )) +
-  geom_point() + # plot scatter aligned dot plot
-  stat_summary(
+  ))
+plot1 <- plot1 +
+  geom_point() + 
+    {if (max(plot1$data$subindividual_count) > 1) 
+  list(stat_summary(
     fun = mean,
     fun.min = min,
     fun.max = max,
     shape = 3,
     size = 2
-  ) +
+  ))
+      } +
   scale_color_manual(values = group_colors) +
   ggtitle(
     "Tumor Count",
@@ -2017,11 +2282,11 @@ ggplotly_subtitle(plot1, hoverinfo = "text") %>%
     )
   ) %>%
   format_plotly_legend("full_group", full_group_info_list, "full_group") %>%
-  format_plotly_trace("scatter", "markers+lines",
+  {if (max(plot1$data$subindividual_count) > 1) 
+  format_plotly_trace(., "scatter", "lines+markers",
     hoverinfo = "y",
     marker = list(opacity = 0.6)
-  )
-
+  ) else . }
 # write graph data to file
 write.csv(graph_data, file.path(path_to_graph_data, "graph_001_data.csv"), row.names = FALSE)
 
@@ -2042,6 +2307,7 @@ graph_data <- Slide_Areas %>%
     individual_id,
     subindividual_id, full_group,
     all_of(full_grouping_vars),
+    all_of(sample_info_vars),
     number_of_tumors
   ) %>%
   group_by(individual_id) %>%
@@ -2057,20 +2323,15 @@ graph_formula <- total_number_of_tumors ~ full_group
 # {summary_stats,homo_var_violation,homo_var_test,norm_violation,norm_test}
 stats_summary <- run_stats_summary(graph_data, graph_formula)
 if (!skip_stats) {
-  omni_test <- run_omnibus_test(graph_data, graph_formula)
+  omni_test <- run_omnibus_test(stats_summary, useParametric = parametric_test_individuals)
   posthoc_test <- run_posthoc_test(omni_test, full_group_comparisons)
 }
 
 # plot tumor count distributions by group
 plot1 <- graph_data %>%
   rowwise() %>%
-  mutate(grouping_labels = paste0("<b>",
-    full_grouping_vars_labels,
-    ": </b>",
-    across(all_of(full_grouping_vars)),
-    "</br>",
-    collapse = ""
-  )) %>%
+  make_formatted_labels(full_grouping_vars,full_grouping_vars_labels,"grouping_labels") %>%
+  make_formatted_labels(sample_info_vars,sample_info_vars_labels,"sample_info_labels") %>%
   ggplot(aes(
     x = full_group,
     y = total_number_of_tumors,
@@ -2078,7 +2339,7 @@ plot1 <- graph_data %>%
     text = paste0(
       "</br>",
       "<b>", individual_var_label, ": </b>", individual_id, "</br>",
-      grouping_labels,
+      grouping_labels, sample_info_labels,
       "<b>", subindividual_unit, " count: </b>", subindividual_count, "</br>",
       "<b>Tumor Count: </b>", total_number_of_tumors
     )
@@ -2155,6 +2416,7 @@ graph_data <- Tumor_Areas %>%
     slide_number,
     full_group,
     all_of(full_grouping_vars),
+    all_of(sample_info_vars),
     tumor_grade
   ) %>%
   group_by(individual_id) %>%
@@ -2168,13 +2430,8 @@ graph_data <- Tumor_Areas %>%
 # plot tumor counts by tumor grade for each slide
 plot1 <- graph_data %>%
   rowwise() %>%
-  mutate(grouping_labels = paste0("<b>",
-    full_grouping_vars_labels,
-    ": </b>",
-    across(all_of(full_grouping_vars)),
-    "</br>",
-    collapse = ""
-  )) %>%
+  make_formatted_labels(full_grouping_vars,full_grouping_vars_labels,"grouping_labels") %>%
+  make_formatted_labels(sample_info_vars,sample_info_vars_labels,"sample_info_labels") %>%
   ggplot(aes(
     x = individual_id,
     y = tumor_count_in_individual,
@@ -2183,7 +2440,7 @@ plot1 <- graph_data %>%
     text = paste0(
       "</br>",
       "<b>", individual_var_label, ": </b>", individual_id, "</br>",
-      grouping_labels,
+      grouping_labels, sample_info_labels,
       "<b>Tumor grade: </b>", tumor_grade, "</br>",
       "<b>Tumor count: </b>", tumor_count_in_individual, "</br>"
     )
@@ -2257,6 +2514,7 @@ graph_data <- Tumor_Areas %>%
   select(
     full_group,
     all_of(full_grouping_vars),
+    all_of(sample_info_vars),
     tumor_grade,
     individual_count,
     subindividual_count,
@@ -2267,10 +2525,9 @@ graph_data <- Tumor_Areas %>%
 
 # plot total count of tumor of each grade per group in stacked bar graph
 plot2 <- graph_data %>%
-  mutate(grouping_labels = paste0("<b>", full_grouping_vars_labels, ": </b>",
-    across(all_of(full_grouping_vars)), "</br>",
-    collapse = ""
-  )) %>%
+  rowwise() %>%
+  make_formatted_labels(full_grouping_vars,full_grouping_vars_labels,"grouping_labels") %>%
+  make_formatted_labels(sample_info_vars,sample_info_vars_labels,"sample_info_labels") %>%
   ggplot(aes(
     x = full_group,
     y = total_tumor_count,
@@ -2278,7 +2535,7 @@ plot2 <- graph_data %>%
     fill = tumor_grade,
     text = paste0(
       "</br>",
-      grouping_labels,
+      grouping_labels, sample_info_labels,
       "<b>", individual_unit, " count: </b>", individual_count, "</br>",
       "<b>", subindividual_unit, " count: </b>", subindividual_count, "</br>",
       "<b>Tumor grade: </b>", tumor_grade, "</br>",
@@ -2348,6 +2605,7 @@ graph_data <- Tumor_Areas %>%
   select(
     full_group,
     all_of(full_grouping_vars),
+    all_of(sample_info_vars),
     individual_id,
     subindividual_id,
     tumor_grade
@@ -2370,13 +2628,9 @@ graph_data <- Tumor_Areas %>%
 # no stats for this graph
 
 plot1 <- graph_data %>%
-  mutate(grouping_labels = paste0("<b>",
-    full_grouping_vars_labels,
-    ": </b>",
-    across(all_of(full_grouping_vars)),
-    "</br>",
-    collapse = ""
-  )) %>%
+  rowwise() %>% 
+  make_formatted_labels(full_grouping_vars,full_grouping_vars_labels,"grouping_labels") %>%
+  make_formatted_labels(sample_info_vars,sample_info_vars_labels,"sample_info_labels") %>%
   ggplot(aes(
     x = full_group,
     y = mean_tumor_count,
@@ -2384,7 +2638,7 @@ plot1 <- graph_data %>%
     fill = tumor_grade,
     text = paste0(
       "</br>",
-      grouping_labels,
+      grouping_labels, sample_info_labels,
       "<b>Tumor grade: </b>", tumor_grade, "</br>",
       "<b>", individual_unit, " count: </b>", individual_count, "</br>",
       "<b>", subindividual_unit, " count: </b>", subindividual_count, "</br>",
@@ -2452,6 +2706,7 @@ graph_data <- Tumor_Areas %>%
   select(
     full_group,
     all_of(full_grouping_vars),
+    all_of(sample_info_vars),
     individual_id,
     subindividual_id,
     tumor_grade
@@ -2470,22 +2725,15 @@ graph_data <- Tumor_Areas %>%
 graph_formula <- tumor_count_in_individual ~ full_group:tumor_grade
 stats_summary <- run_stats_summary(graph_data, graph_formula)
 if (!skip_stats) {
-  omni_test <- run_omnibus_test(graph_data, graph_formula,useParametric = TRUE)
+  omni_test <- run_omnibus_test(stats_summary, useParametric = parametric_test_individuals)
   posthoc_test <- run_posthoc_test(omni_test, full_group_tumor_grade_comparisons)
 }
 
 # make graph
 plot1 <- graph_data %>%
-  mutate(
-    tumor_grade = fct_rev(tumor_grade),
-    grouping_labels = paste0("<b>",
-      full_grouping_vars_labels,
-      ": </b>",
-      across(all_of(full_grouping_vars)),
-      "</br>",
-      collapse = ""
-    )
-  ) %>%
+  rowwise() %>%
+  make_formatted_labels(full_grouping_vars,full_grouping_vars_labels,"grouping_labels") %>%
+  make_formatted_labels(sample_info_vars,sample_info_vars_labels,"sample_info_labels") %>%
   ggplot(aes(
     x = tumor_grade,
     y = tumor_count_in_individual,
@@ -2493,7 +2741,7 @@ plot1 <- graph_data %>%
     color = full_group,
     text = paste0(
       "</br>",
-      grouping_labels,
+      grouping_labels, sample_info_labels,
       "<b>Tumor grade: </b>", tumor_grade, "</br>",
       "<b>", individual_unit, " count: </b>", individual_count, "</br>",
       "<b>", subindividual_unit, " count: </b>", subindividual_count, "</br>",
@@ -2572,6 +2820,7 @@ graph_data <- Tumor_Areas %>%
   select(
     full_group,
     all_of(full_grouping_vars),
+    all_of(sample_info_vars),
     individual_id,
     subindividual_id,
     tumor_grade
@@ -2592,14 +2841,9 @@ graph_data <- Tumor_Areas %>%
 # no stats needed for this graph
 
 plot1 <- graph_data %>%
-  rowwise() %>%
-  mutate(grouping_labels = paste0("<b>",
-    full_grouping_vars_labels,
-    ": </b>",
-    across(all_of(full_grouping_vars)),
-    "</br>",
-    collapse = ""
-  )) %>%
+  rowwise() %>% 
+  make_formatted_labels(full_grouping_vars,full_grouping_vars_labels,"grouping_labels") %>%
+  make_formatted_labels(sample_info_vars,sample_info_vars_labels,"sample_info_labels") %>%
   ggplot(aes(
     x = individual_id,
     y = tumor_proportion_in_individual,
@@ -2608,7 +2852,7 @@ plot1 <- graph_data %>%
     text = paste0(
       "</br>",
       "<b>", individual_var_label, ": </b>", individual_id, "</br>",
-      grouping_labels,
+      grouping_labels, sample_info_labels,
       "<b>", subindividual_unit, " count: </b>", subindividual_count, "</br>",
       "<b>Tumor Grade: </b>", tumor_grade, "</br>",
       "<b>Tumor count: </b>", tumor_count_in_individual, "</br>",
@@ -2616,7 +2860,6 @@ plot1 <- graph_data %>%
     )
   )) +
   geom_bar(stat = "identity", position = "stack") +
-  scale_y_continuous(limits = c(0,1)) + 
   scale_fill_manual(values = tumor_grade_colors, limits = tumor_grade_x_limits) +
   scale_color_manual(values = group_colors) +
   ggtitle(
@@ -2669,6 +2912,7 @@ graph_data <- Tumor_Areas %>%
   select(
     full_group,
     all_of(full_grouping_vars),
+    all_of(sample_info_vars),
     individual_id,
     subindividual_id,
     tumor_grade
@@ -2682,14 +2926,9 @@ graph_data <- Tumor_Areas %>%
 # no stats to perform on this data
 
 plot1 <- graph_data %>%
-  rowwise() %>%
-  mutate(grouping_labels = paste0("<b>",
-    full_grouping_vars_labels,
-    ": </b>",
-    across(all_of(full_grouping_vars)),
-    "</br>",
-    collapse = ""
-  )) %>%
+  rowwise() %>% 
+  make_formatted_labels(full_grouping_vars,full_grouping_vars_labels,"grouping_labels") %>%
+  make_formatted_labels(sample_info_vars,sample_info_vars_labels,"sample_info_labels") %>%
   ggplot(aes(
     x = full_group,
     y = proportion,
@@ -2697,7 +2936,7 @@ plot1 <- graph_data %>%
     color = full_group,
     text = paste0(
       "</br>",
-      grouping_labels,
+      grouping_labels, sample_info_labels,
       "<b>Tumor grade: </b>", tumor_grade, "</br>",
       "<b>Proportion: </b>", proportion
     )
@@ -2752,7 +2991,12 @@ figure_caption <- paste0(
 <a id="graph_009"></a>
 ```{r graph_009, fig.cap= figure_caption}
 graph_data <- Tumor_Areas %>%
-  select(full_group, all_of(full_grouping_vars), individual_id, subindividual_id, tumor_grade) %>%
+  select(full_group,
+         all_of(full_grouping_vars),
+         all_of(sample_info_vars), 
+         individual_id, 
+         subindividual_id, 
+         tumor_grade) %>%
   group_by(full_group, individual_id, tumor_grade) %>%
   mutate(tumor_count_in_individual = n()) %>%
   slice(1) %>%
@@ -2766,7 +3010,7 @@ graph_data <- Tumor_Areas %>%
 graph_formula <- remove_lowinfo_terms(graph_data, tumor_proportion_in_individual ~ full_group * tumor_grade)
 stats_summary <- run_stats_summary(graph_data, graph_formula)
 if (!skip_stats) {
-  omni_test <- run_omnibus_test(stats_summary)
+  omni_test <- run_omnibus_test(stats_summary, useParametric = parametric_test_individuals)
   posthoc_test <- run_posthoc_test(omni_test, full_group_tumor_grade_comparisons)
 }
 
@@ -2948,6 +3192,7 @@ graph_data <- Slide_Areas %>%
     subindividual_id,
     full_group,
     all_of(full_grouping_vars),
+    all_of(sample_info_vars),
     total_tumor_area_in_image,
     exclude_reason
   )
@@ -2955,14 +3200,12 @@ graph_data <- Slide_Areas %>%
 # no stats needed for this graph
 
 plot1 <- graph_data %>%
-  rowwise() %>%
-  mutate(grouping_labels = paste0("<b>",
-    full_grouping_vars_labels,
-    ": </b>",
-    across(all_of(full_grouping_vars)),
-    "</br>",
-    collapse = ""
-  )) %>%
+  rowwise() %>% 
+  make_formatted_labels(full_grouping_vars,full_grouping_vars_labels,"grouping_labels") %>%
+  make_formatted_labels(sample_info_vars,sample_info_vars_labels,"sample_info_labels") %>%
+  group_by(individual_id) %>%
+  mutate(subindividual_count = n()) %>%
+  ungroup() %>%
   ggplot(aes(
     x = individual_id,
     y = total_tumor_area_in_image,
@@ -2980,7 +3223,7 @@ plot1 <- graph_data %>%
       ": </b>",
       subindividual_id,
       "</br>",
-      grouping_labels,
+      grouping_labels, sample_info_labels,
       "<b>Total Tumor Area: </b>",
       format(
         round(
@@ -2990,9 +3233,19 @@ plot1 <- graph_data %>%
         big.mark = ","
       ), " µm<sup>2</sup>"
     )
-  )) +
+  ))
+plot1 <- plot1 +
   geom_point() + # plot scatter aligned dot plot
-  stat_summary(fun = mean, fun.min = min, fun.max = max, shape = 3, size = 2) +
+  {if (max(plot1$data$subindividual_count) > 1) 
+      list(
+  stat_summary(
+    fun = mean,
+    fun.min = min,
+    fun.max = max,
+    shape = 3,
+    size = 2
+  ))
+      } +
   scale_color_manual(values = group_colors) + # fill bars using colors by group
   scale_y_log10() +
   ggtitle("Total tumor area", paste("per", individual_unit)) +
@@ -3005,7 +3258,6 @@ plot1 <- graph_data %>%
 ggplotly_subtitle(plot1, hoverinfo = "text") %>%
   layout(
     width = min(50 * individual_count, 800),
-    hovermode = "x unified",
     hoverdistance = 1,
     xaxis = list(tickangle = -90, tickfont = list(size = min(0.8 * min(50 * individual_count, 800) / individual_count, 10))),
     legend = list(title = list(text = paste0("<b>", paste0(c(full_grouping_vars_labels), collapse = "\n"), "</b>"))),
@@ -3017,7 +3269,11 @@ ggplotly_subtitle(plot1, hoverinfo = "text") %>%
     )
   ) %>%
   format_plotly_legend("full_group", full_group_info_list, "full_group") %>%
-  format_plotly_trace("scatter", "markers+lines", hoverinfo = "y", marker = list(opacity = 0.6))
+  {if (max(plot1$data$subindividual_count) > 1) 
+  format_plotly_trace(.,"scatter", "lines+markers",
+    hoverinfo = "y",
+    marker = list(opacity = 0.6)
+  ) else . }
 
 
 # write graph data to file
@@ -3025,8 +3281,7 @@ write.csv(graph_data, file.path(path_to_graph_data, "graph_011_data.csv"), row.n
 
 figure_caption <- paste0(
   "Graph 011: Dot plot of total tumor area for each slide in data set by",
-  paste_to_text_list(c("tumor grade", full_grouping_vars_labels)), "Points/labels in red indicate slidesthat were manually flagged for exclusion (see 'Excluded Slides' table in [Data Filtering]). Data shown in this graph can be found in ",
-  file.path(path_to_graph_data, "graph_011_data.csv")
+  paste_to_text_list(c("tumor grade", full_grouping_vars_labels)), "Points/labels in red indicate slidesthat were manually flagged for exclusion (see 'Excluded Slides' table in [Data Filtering])."
 )
 ```
 
@@ -3038,19 +3293,31 @@ graph_data <- Slide_Areas %>%
   select(
     individual_id,
     subindividual_id,
-    full_group, all_of(full_grouping_vars),
+    full_group, 
+    all_of(full_grouping_vars),
+    all_of(sample_info_vars),
     total_tumor_area_in_image
   ) %>%
   group_by(individual_id) %>%
-  mutate(total_tumor_area_in_individual = sum(total_tumor_area_in_image)) %>%
+  mutate(
+    total_tumor_area_in_individual = sum(total_tumor_area_in_image),
+    log10_total_tumor_area_in_individual = log10(total_tumor_area_in_individual)
+         ) %>%
+  select(-total_tumor_area_in_image) %>%
   slice(1) %>%
   group_by(full_group)
 
 # perform statistics
 graph_formula <- total_tumor_area_in_individual ~ full_group
+graph_note <- ""
+if (test_log_normalization(graph_data,graph_formula)){
+  graph_formula <- log10_total_tumor_area_in_individual ~ full_group
+  graph_yvar <- "log10_total_tumor_area_in_individual"
+  graph_note <- "Data were log10 transformed prior to statistical analysis."
+}
 stats_summary <- run_stats_summary(graph_data, graph_formula)
 if (!skip_stats) {
-  omni_test <- run_omnibus_test(graph_data, graph_formula)
+  omni_test <- run_omnibus_test(stats_summary, useParametric = parametric_test_individuals)
   posthoc_test <- run_posthoc_test(omni_test, full_group_comparisons)
 }
 
@@ -3110,8 +3377,7 @@ write.csv(graph_data, file.path(path_to_graph_data, "graph_012_data.csv"), row.n
 
 figure_caption <- paste0(
   "Graph 012: Box plot of mean total tumor area from each ", individual_unit, " by ",
-  paste_to_text_list(full_grouping_vars_labels), ". Data shown in this graph can be found in ",
-  file.path(path_to_graph_data, "graph_012_data.csv")
+  paste_to_text_list(full_grouping_vars_labels), ". ", graph_note
 )
 ```
 
@@ -3122,30 +3388,35 @@ graph_data <- Slide_Areas %>%
   select(
     individual_id,
     subindividual_id,
-    full_group, all_of(full_grouping_vars),
+    full_group, 
+    all_of(full_grouping_vars),
+    all_of(sample_info_vars),
     grade1_area_in_image,
     grade2_area_in_image,
     grade3_area_in_image,
-    grade4_area_in_image
+    grade4_area_in_image,
+    grade5_area_in_image
   ) %>%
   pivot_longer(
     c(
       grade1_area_in_image,
       grade2_area_in_image,
       grade3_area_in_image,
-      grade4_area_in_image
+      grade4_area_in_image,
+      grade5_area_in_image
     ),
     values_to = "grade_area_in_image",
     names_to = "area_grade"
   ) %>%
   mutate(area_grade = factor(area_grade,
     levels = c(
+      "grade5_area_in_image",
       "grade4_area_in_image",
       "grade3_area_in_image",
       "grade2_area_in_image",
       "grade1_area_in_image"
     ),
-    labels = c("4", "3", "2", "1")
+    labels = c("5","4", "3", "2", "1")
   )) %>%
   group_by(full_group, individual_id, area_grade) %>%
   mutate(subindividual_count = n_distinct(subindividual_id)) %>%
@@ -3159,8 +3430,9 @@ individual_count <- n_distinct(graph_data$individual_id)
 
 # plot tumor areas of each grade for each slide as stacked bar graph
 plot1 <- graph_data %>%
-  rowwise() %>%
-  mutate(grouping_labels = paste0("<b>", full_grouping_vars_labels, ": </b>", across(all_of(full_grouping_vars)), "</br>", collapse = "")) %>%
+  rowwise() %>% 
+  make_formatted_labels(full_grouping_vars,full_grouping_vars_labels,"grouping_labels") %>%
+  make_formatted_labels(sample_info_vars,sample_info_vars_labels,"sample_info_labels") %>%
   ggplot(aes(
     x = individual_id,
     y = total_grade_area,
@@ -3169,7 +3441,7 @@ plot1 <- graph_data %>%
     text = paste0(
       "</br>",
       "<b>", individual_var_label, ": </b>", individual_id, "</br>",
-      grouping_labels,
+      grouping_labels, sample_info_labels,
       "<b>", subindividual_unit, " count: </b>", subindividual_count, "</br>",
       "<b>Area grade: </b>", area_grade, "</br>",
       "<b>Tumor area: </b>", format(
@@ -3182,7 +3454,7 @@ plot1 <- graph_data %>%
     )
   )) +
   geom_bar(position = "stack", stat = "identity") + # plot stacked bar graph
-  scale_fill_manual(values = tumor_grade_colors) + # fill bars using colors based on area grade
+  scale_fill_manual(values = tumor_grade_colors, drop = FALSE, limits = tumor_grade_x_limits) + # fill bars using colors based on area grade
   scale_color_manual(values = group_colors) + # outline bars using colors based on group
   theme(axis.text.x = element_text(angle = 45, vjust = 1, hjust = 1)) + # rotate x-axis text 45
   ggtitle("Tumor Area", paste("of each grade per", individual_unit)) + # add descriptive title and subtitle
@@ -3190,7 +3462,7 @@ plot1 <- graph_data %>%
 
 ggplotly_subtitle(plot1, hoverinfo = c("text")) %>%
   format_plotly_trace("bar", width = 0.7) %>%
-  format_plotly_legend("full_group", full_group_grade_info_list, "label") %>%
+  format_plotly_legend("full_group", full_group_grade_info_list, "label", verbose = T) %>%
   layout(
     legend = list(
       orientation = "v",
@@ -3213,8 +3485,7 @@ write.csv(graph_data, file.path(path_to_graph_data, "graph_013_data.csv"), row.n
 
 figure_caption <- paste0(
   "Graph 013: Stacked bar graph showing the total tumor area of each grade within each ", individual_unit,
-  ", with bar colors showing the contribution of areas of each tumor grade and bar outlines showing ", full_grouping_label, ". Data shown in this graph can be found in ",
-  file.path(path_to_graph_data, "graph_013_data.csv")
+  ", with bar colors showing the contribution of areas of each tumor grade and bar outlines showing ", full_grouping_label, ". "
 )
 ```
 ###### Graded tumors
@@ -3227,6 +3498,7 @@ graph_data <- Tumor_Areas %>%
     individual_id,
     subindividual_id,
     full_group, all_of(full_grouping_vars),
+    all_of(sample_info_vars),
     tumor_grade,
     total_tumor_area
   ) %>%
@@ -3242,11 +3514,9 @@ graph_data <- Tumor_Areas %>%
 # no stats needed for this graph
 
 plot1 <- graph_data %>%
-  rowwise() %>%
-  mutate(grouping_labels = paste0("<b>", full_grouping_vars_labels, ": </b>",
-    across(all_of(full_grouping_vars)), "</br>",
-    collapse = ""
-  )) %>%
+  rowwise() %>% 
+  make_formatted_labels(full_grouping_vars,full_grouping_vars_labels,"grouping_labels") %>%
+  make_formatted_labels(sample_info_vars,sample_info_vars_labels,"sample_info_labels") %>%
   ggplot(aes(
     x = individual_id,
     y = total_tumor_grade_area_in_slide,
@@ -3255,7 +3525,7 @@ plot1 <- graph_data %>%
     text = paste0(
       "</br>",
       "<b>", individual_var_label, ": </b>", individual_id, "</br>",
-      grouping_labels,
+      grouping_labels, sample_info_labels,
       "<b>", subindividual_unit, " count: </b>", subindividual_count, "</br>",
       "<b>Tumor area: </b>", format(
         round(
@@ -3318,6 +3588,7 @@ graph_data <- Tumor_Areas %>%
     individual_id,
     subindividual_id,
     full_group, all_of(full_grouping_vars),
+    all_of(sample_info_vars),
     tumor_grade,
     total_tumor_area
   ) %>%
@@ -3336,7 +3607,7 @@ graph_formula <- total_graded_tumor_area ~ full_group * tumor_grade
 stats_summary <- run_stats_summary(graph_data, graph_formula)
 
 if (!skip_stats) {
-  omni_test <- run_omnibus_test(stats_summary)
+  omni_test <- run_omnibus_test(stats_summary, useParametric = parametric_test_individuals)
   posthoc_test <- run_posthoc_test(omni_test, full_group_tumor_grade_comparisons)
 }
 
@@ -3431,10 +3702,12 @@ graph_data <- Slide_Areas %>%
     subindividual_id,
     full_group,
     all_of(full_grouping_vars),
+    all_of(sample_info_vars),
     grade1_area_in_image,
     grade2_area_in_image,
     grade3_area_in_image,
     grade4_area_in_image,
+    grade5_area_in_image,
     total_tumor_area_in_image
   ) %>%
   group_by(full_group, individual_id) %>%
@@ -3444,7 +3717,8 @@ graph_data <- Slide_Areas %>%
     grade1_area_in_individual = sum(grade1_area_in_image),
     grade2_area_in_individual = sum(grade2_area_in_image),
     grade3_area_in_individual = sum(grade3_area_in_image),
-    grade4_area_in_individual = sum(grade4_area_in_image)
+    grade4_area_in_individual = sum(grade4_area_in_image),
+    grade5_area_in_individual = sum(grade5_area_in_image)
   ) %>%
   slice(1) %>%
   select(
@@ -3453,37 +3727,32 @@ graph_data <- Slide_Areas %>%
     -grade2_area_in_image,
     -grade3_area_in_image,
     -grade4_area_in_image,
+    -grade5_area_in_image,
     -total_tumor_area_in_image
   ) %>%
   mutate(
     grade1_proportion_in_individual = grade1_area_in_individual / total_tumor_grade_area_in_individual,
     grade2_proportion_in_individual = grade2_area_in_individual / total_tumor_grade_area_in_individual,
     grade3_proportion_in_individual = grade3_area_in_individual / total_tumor_grade_area_in_individual,
-    grade4_proportion_in_individual = grade4_area_in_individual / total_tumor_grade_area_in_individual
+    grade4_proportion_in_individual = grade4_area_in_individual / total_tumor_grade_area_in_individual,
+    grade5_proportion_in_individual = grade5_area_in_individual / total_tumor_grade_area_in_individual
   )
 
 # no stats for this graph
 
 # plot proportion area grades per slide in stacked bar graph
 plot1 <- graph_data %>%
-  rowwise() %>%
-  mutate(
-    grouping_labels = paste0(
-      "<b>",
-      full_grouping_vars_labels,
-      ": </b>",
-      across(all_of(full_grouping_vars)),
-      "</br>",
-      collapse = ""
-    )
-  ) %>%
+  rowwise() %>% 
+  make_formatted_labels(full_grouping_vars,full_grouping_vars_labels,"grouping_labels") %>%
+  make_formatted_labels(sample_info_vars,sample_info_vars_labels,"sample_info_labels") %>%
   # pivot data to plot each grade stacked within an individual
   pivot_longer(
     c(
       grade1_proportion_in_individual,
       grade2_proportion_in_individual,
       grade3_proportion_in_individual,
-      grade4_proportion_in_individual
+      grade4_proportion_in_individual,
+      grade5_proportion_in_individual
     ),
     values_to = "grade_proportion_in_individual",
     names_to = "area_grade"
@@ -3494,6 +3763,7 @@ plot1 <- graph_data %>%
   mutate(area_grade = factor(
     area_grade,
     levels = c(
+      "5",
       "4",
       "3",
       "2",
@@ -3509,7 +3779,7 @@ plot1 <- graph_data %>%
     text = paste0(
       "</br>",
       "<b>", individual_var_label, ": </b>", individual_id, "</br>",
-      grouping_labels,
+      grouping_labels, sample_info_labels,
       "<b>", subindividual_unit, " count: </b>", subindividual_count, "</br>",
       "<b>Area grade: </b>", rev(tumor_grade_labels), "</br>",
       "<b>Proportion: </b>", round(grade_proportion_in_individual, digits = 3)
@@ -3578,29 +3848,33 @@ graph_data <- Slide_Areas %>%
     subindividual_id,
     full_group, 
     all_of(full_grouping_vars),
+    all_of(sample_info_vars),
     grade1_area_in_image, grade2_area_in_image,
     grade3_area_in_image, grade4_area_in_image,
+    grade5_area_in_image,
     total_tumor_area_in_image
   ) %>%
   group_by(full_group, individual_id) %>%
   mutate(
     subindividual_count = n_distinct(subindividual_id),
-    total_tumor_grade_area_in_individual = sum(total_tumor_area_in_image),
-    grade1_area_in_individual = sum(grade1_area_in_image),
-    grade2_area_in_individual = sum(grade2_area_in_image),
-    grade3_area_in_individual = sum(grade3_area_in_image),
-    grade4_area_in_individual = sum(grade4_area_in_image)
+    total_tumor_grade_area_in_individual = sum(total_tumor_area_in_image,na.rm = TRUE),
+    grade1_area_in_individual = sum(grade1_area_in_image,na.rm = TRUE),
+    grade2_area_in_individual = sum(grade2_area_in_image,na.rm = TRUE),
+    grade3_area_in_individual = sum(grade3_area_in_image,na.rm = TRUE),
+    grade4_area_in_individual = sum(grade4_area_in_image,na.rm = TRUE),
+    grade5_area_in_individual = sum(grade5_area_in_image,na.rm = TRUE)
   ) %>%
   slice(1) %>%
   select(
     -subindividual_id, -grade1_area_in_image, -grade2_area_in_image,
-    -grade3_area_in_image, -grade4_area_in_image, -total_tumor_area_in_image
+    -grade3_area_in_image, -grade4_area_in_image, -grade5_area_in_image, -total_tumor_area_in_image
   ) %>%
   mutate(
     grade1_proportion_in_individual = grade1_area_in_individual / total_tumor_grade_area_in_individual,
     grade2_proportion_in_individual = grade2_area_in_individual / total_tumor_grade_area_in_individual,
     grade3_proportion_in_individual = grade3_area_in_individual / total_tumor_grade_area_in_individual,
-    grade4_proportion_in_individual = grade4_area_in_individual / total_tumor_grade_area_in_individual
+    grade4_proportion_in_individual = grade4_area_in_individual / total_tumor_grade_area_in_individual,
+    grade5_proportion_in_individual = grade5_area_in_individual / total_tumor_grade_area_in_individual
   ) %>%
   mutate(grouping_labels = paste0("<b>", full_grouping_vars_labels, ": </b>",
     across(all_of(full_grouping_vars)), "</br>",
@@ -3612,11 +3886,13 @@ graph_data <- Slide_Areas %>%
       grade1_proportion_in_individual,
       grade2_proportion_in_individual,
       grade3_proportion_in_individual,
-      grade4_proportion_in_individual
+      grade4_proportion_in_individual,
+      grade5_proportion_in_individual
     ),
     values_to = "grade_proportion_in_individual",
     names_to = "area_grade"
   ) %>%
+  mutate(grade_proportion_in_individual = replace_na(grade_proportion_in_individual,0)) %>%
   mutate(across("area_grade", \(x) str_replace(x, "grade", ""))) %>%
   mutate(across("area_grade", \(x) str_replace(x, "_proportion_in_individual", "")))
 
@@ -3625,7 +3901,7 @@ graph_formula <- grade_proportion_in_individual ~ full_group:area_grade
 stats_summary <- run_stats_summary(graph_data, graph_formula)
 
 if (!skip_stats) {
-  omni_test <- run_omnibus_test(stats_summary)
+  omni_test <- run_omnibus_test(stats_summary, useParametric = parametric_test_individuals)
   posthoc_test <- run_posthoc_test(omni_test, full_group_tumor_grade_comparisons)
 }
 
@@ -3654,6 +3930,7 @@ plot1 <- graph_data %>%
     paste("by", paste_to_text_list(c("tumor grade", full_grouping_vars_labels)))
   ) +
   labs(x = "Tumor Grade", y = "Proportion of tumor area") # make axis label more descriptive
+
 ggplotly_subtitle(plot1) %>%
   layout(
     boxmode = "group",
@@ -3704,6 +3981,7 @@ graph_data <- Tumor_Areas %>%
          subindividual_id, 
          full_group, 
          all_of(full_grouping_vars),
+         all_of(sample_info_vars),
          tumor_grade, 
          total_tumor_area) %>%
   group_by(individual_id) %>%
@@ -3721,10 +3999,9 @@ graph_data <- Tumor_Areas %>%
 # no stats for this graph
 
 plot1 <- graph_data %>%
-  mutate(grouping_labels = paste0("<b>", full_grouping_vars_labels, ": </b>",
-    across(all_of(full_grouping_vars)), "</br>",
-    collapse = ""
-  )) %>%
+  rowwise() %>% 
+  make_formatted_labels(full_grouping_vars,full_grouping_vars_labels,"grouping_labels") %>%
+  make_formatted_labels(sample_info_vars,sample_info_vars_labels,"sample_info_labels") %>%
   ggplot(aes(
     x = individual_id,
     y = proportion_of_total_tumor_area,
@@ -3733,7 +4010,7 @@ plot1 <- graph_data %>%
     text = paste0(
       "</br>",
       "<b>", individual_var_label, ": </b>", individual_id, "</br>",
-      grouping_labels,
+      grouping_labels, sample_info_labels,
       "<b>", subindividual_unit, " count: </b>", subindividual_count, "</br>",
       "<b>Tumor grade: </b>", tumor_grade, "</br>",
       "<b>Tumor count: </b>", number_of_grade_tumors_in_individual, "</br>",
@@ -3795,14 +4072,15 @@ figure_caption <- paste0("Graph 018: Stacked bar graph showing the proportion of
 # plot proportion of tumor areas of each grade for each slide as stacked bar graph
 
 graph_data <- Tumor_Areas %>%
-  select(individual_id, subindividual_id, full_group, all_of(full_grouping_vars), tumor_grade, total_tumor_area) %>%
+  select(individual_id, subindividual_id, full_group, all_of(full_grouping_vars),all_of(sample_info_vars), tumor_grade, total_tumor_area) %>%
   group_by(full_group, across(full_grouping_vars), tumor_grade) %>%
-  summarise(
+  mutate(
     total_graded_tumor_area = sum(total_tumor_area),
     tumor_count = n(),
     individual_count = n_distinct(individual_id),
     subindividual_count = n_distinct(subindividual_id)
   ) %>%
+  slice(1) %>%
   group_by(full_group) %>%
   mutate(total_tumor_area = sum(total_graded_tumor_area)) %>%
   group_by(full_group, tumor_grade) %>%
@@ -3811,10 +4089,9 @@ graph_data <- Tumor_Areas %>%
 # no stats for this figure
 
 plot1 <- graph_data %>%
-  mutate(grouping_labels = paste0("<b>", full_grouping_vars_labels, ": </b>",
-    across(all_of(full_grouping_vars)), "</br>",
-    collapse = ""
-  )) %>%
+  rowwise() %>% 
+  make_formatted_labels(full_grouping_vars,full_grouping_vars_labels,"grouping_labels") %>%
+  make_formatted_labels(sample_info_vars,sample_info_vars_labels,"sample_info_labels") %>%
   ggplot(aes(
     x = full_group,
     y = graded_proportion_of_total_tumor_area,
@@ -3822,7 +4099,7 @@ plot1 <- graph_data %>%
     color = full_group,
     text = paste0(
       "</br>",
-      grouping_labels,
+      grouping_labels, sample_info_labels,
       "<b>", individual_unit, " count: </b>", individual_count, "</br>",
       "<b>", subindividual_unit, " count: </b>", subindividual_count, "</br>",
       "<b>Tumor grade: </b>", tumor_grade, "</br>",
@@ -3884,7 +4161,7 @@ individual_unit, "s.*")
 ```{r graph_020, fig.cap= figure_caption}
 # try to perform stats comparisons between groups
 graph_data <- Tumor_Areas %>%
-  select(full_group, all_of(full_grouping_vars), individual_id, subindividual_id, tumor_grade, total_tumor_area) %>%
+  select(full_group, all_of(full_grouping_vars),all_of(sample_info_vars), individual_id, subindividual_id, tumor_grade, total_tumor_area) %>%
   group_by(individual_id) %>%
   mutate(
     total_tumor_area_in_individual = sum(total_tumor_area),
@@ -3905,16 +4182,14 @@ graph_formula <- graded_proportion_of_total_tumor_area ~ full_group:tumor_grade
 stats_summary <- run_stats_summary(graph_data, graph_formula)
 
 if (!skip_stats) {
-  omni_test <- run_omnibus_test(stats_summary)
+  omni_test <- run_omnibus_test(stats_summary, useParametric = parametric_test_individuals)
   posthoc_test <- run_posthoc_test(omni_test, full_group_tumor_grade_comparisons)
 }
 
 plot1 <- graph_data %>%
-  rowwise() %>%
-  mutate(
-    grouping_labels = paste0("<b>", full_grouping_vars_labels, ": </b>", across(all_of(full_grouping_vars)), "</br>", collapse = ""),
-    tumor_grade = fct_rev(tumor_grade)
-  ) %>%
+  rowwise() %>% 
+  make_formatted_labels(full_grouping_vars,full_grouping_vars_labels,"grouping_labels") %>%
+  make_formatted_labels(sample_info_vars,sample_info_vars_labels,"sample_info_labels") %>%
   ggplot(aes(
     x = tumor_grade,
     y = graded_proportion_of_total_tumor_area,
@@ -3923,7 +4198,7 @@ plot1 <- graph_data %>%
     text = paste0(
       "</br>",
       "<b>", individual_var_label, ": </b>", individual_id, "</br>",
-      grouping_labels,
+      grouping_labels, sample_info_labels,
       "<b> Tumor Grade: </b>", tumor_grade, "</br>",
       "<b>", subindividual_unit, " count: </b>", subindividual_count_in_individual, "</br>",
       "<b>Tumor Count: </b>", tumor_count_in_individual, "</br>",
@@ -3940,6 +4215,7 @@ plot1 <- graph_data %>%
     guide = guide_legend(override.aes = list(linetype = 0, alpha = 1))
   ) +
   scale_color_manual(values = group_colors) + # outline bars using colors based on group
+  scale_x_discrete(limits = tumor_grade_x_limits) +
   ggtitle("Proportion of total tumor area", paste("from tumors of each grade in each", full_grouping_label)) + # add descriptive title and subtitle
   labs(
     x = "Tumor Grade", y = "Proportion of total tumor area", # make axis label more descriptive
@@ -3970,7 +4246,7 @@ if (!skip_stats) {
 # write graph data to file
 write.csv(graph_data, file.path(path_to_graph_data, "graph_020_data.csv"), row.names = FALSE)
 
-figure_legend <- paste0("Graph 020: Box plot of the proportion of total tumor area for each tumor grade within each", paste_to_text_list(full_grouping_vars_labels), ". This does not account for differences in tumor number or tumor burden among the analyzed ", individual_unit)
+figure_caption <- paste0("Graph 020: Box plot of the proportion of total tumor area for each tumor grade within each", paste_to_text_list(full_grouping_vars_labels), ". This does not account for differences in tumor number or tumor burden among the analyzed ", individual_unit)
 ```
 
 ##### Proportion of lung area {.tabset .tabset-fade .tabset-pills}
@@ -3983,7 +4259,9 @@ figure_legend <- paste0("Graph 020: Box plot of the proportion of total tumor ar
 graph_data <- Slide_Areas %>%
   select(
     individual_id, subindividual_id, full_group, all_of(full_grouping_vars),
-    grade1_area_in_image, grade2_area_in_image, grade3_area_in_image, grade4_area_in_image,
+    all_of(sample_info_vars),
+    grade1_area_in_image, grade2_area_in_image, grade3_area_in_image, 
+    grade4_area_in_image, grade5_area_in_image,
     total_tissue_area_in_image
   ) %>%
   group_by(individual_id) %>%
@@ -3992,18 +4270,20 @@ graph_data <- Slide_Areas %>%
     grade2_proportion_of_lung_area = sum(grade2_area_in_image) / sum(total_tissue_area_in_image),
     grade3_proportion_of_lung_area = sum(grade3_area_in_image) / sum(total_tissue_area_in_image),
     grade4_proportion_of_lung_area = sum(grade4_area_in_image) / sum(total_tissue_area_in_image),
+    grade5_proportion_of_lung_area = sum(grade5_area_in_image) / sum(total_tissue_area_in_image),
     subindividual_count = n_distinct(subindividual_id)
   ) %>%
-  select(-subindividual_id, -grade1_area_in_image, -grade2_area_in_image, -grade3_area_in_image, -grade4_area_in_image) %>%
+  select(-subindividual_id, -grade1_area_in_image, -grade2_area_in_image, -grade3_area_in_image, -grade4_area_in_image, -grade5_area_in_image) %>%
   slice(1)
 
 # no stats for this graph
 
 # plot proportion area grades per slide in stacked bar graph
 plot1 <- graph_data %>%
-  rowwise() %>%
-  mutate(grouping_labels = paste0("<b>", full_grouping_vars_labels, ": </b>", across(all_of(full_grouping_vars)), "</br>", collapse = "")) %>%
-  pivot_longer(c(grade1_proportion_of_lung_area, grade2_proportion_of_lung_area, grade3_proportion_of_lung_area, grade4_proportion_of_lung_area),
+  rowwise() %>% 
+  make_formatted_labels(full_grouping_vars,full_grouping_vars_labels,"grouping_labels") %>%
+  make_formatted_labels(sample_info_vars,sample_info_vars_labels,"sample_info_labels") %>%
+  pivot_longer(c(grade1_proportion_of_lung_area, grade2_proportion_of_lung_area, grade3_proportion_of_lung_area, grade4_proportion_of_lung_area, grade5_proportion_of_lung_area),
     names_to = "area_grade",
     values_to = "proportion_of_lung_area"
   ) %>%
@@ -4014,6 +4294,7 @@ plot1 <- graph_data %>%
   # rearrange graph so grade 4 is on top
   mutate(area_grade = factor(area_grade,
     levels = c(
+      "5",
       "4",
       "3",
       "2",
@@ -4028,7 +4309,7 @@ plot1 <- graph_data %>%
     text = paste0(
       "</br>",
       "<b>", individual_unit, " ID: </b>", individual_id, "</br>",
-      grouping_labels,
+      grouping_labels, sample_info_labels,
       "<b>", subindividual_unit, " count: </b>", subindividual_count, "</br>",
       "<b>Area grade: </b>", area_grade, "</br>",
       "<b>Total grade area: </b>", format(round(grade_area_in_lung_area, 0), big.mark = ","), " µm<sup>2</sup>", "</br>",
@@ -4079,10 +4360,12 @@ graph_data <- Slide_Areas %>%
     subindividual_id,
     full_group,
     all_of(full_grouping_vars),
+    all_of(sample_info_vars),
     grade1_area_in_image,
     grade2_area_in_image,
     grade3_area_in_image,
     grade4_area_in_image,
+    grade5_area_in_image,
     total_tissue_area_in_image
   ) %>%
   group_by(full_group) %>%
@@ -4091,6 +4374,7 @@ graph_data <- Slide_Areas %>%
     grade2_proportion_of_lung_area = sum(grade2_area_in_image) / sum(total_tissue_area_in_image),
     grade3_proportion_of_lung_area = sum(grade3_area_in_image) / sum(total_tissue_area_in_image),
     grade4_proportion_of_lung_area = sum(grade4_area_in_image) / sum(total_tissue_area_in_image),
+    grade5_proportion_of_lung_area = sum(grade5_area_in_image) / sum(total_tissue_area_in_image),
     number_of_individuals = n_distinct(individual_id),
     subindividual_count = n_distinct(subindividual_id)
   ) %>%
@@ -4100,7 +4384,8 @@ graph_data <- Slide_Areas %>%
     -grade1_area_in_image,
     -grade2_area_in_image,
     -grade3_area_in_image,
-    -grade4_area_in_image
+    -grade4_area_in_image,
+    -grade5_area_in_image
   ) %>%
   slice(1)
 
@@ -4108,20 +4393,16 @@ graph_data <- Slide_Areas %>%
 
 # plot proportion area grades per slide in stacked bar graph
 plot1 <- graph_data %>%
-  rowwise() %>%
-  mutate(grouping_labels = paste0("<b>",
-    full_grouping_vars_labels,
-    ": </b>",
-    across(all_of(full_grouping_vars)),
-    "</br>",
-    collapse = ""
-  )) %>%
+  rowwise() %>% 
+  make_formatted_labels(full_grouping_vars,full_grouping_vars_labels,"grouping_labels") %>%
+  make_formatted_labels(sample_info_vars,sample_info_vars_labels,"sample_info_labels") %>%
   pivot_longer(
     c(
       grade1_proportion_of_lung_area,
       grade2_proportion_of_lung_area,
       grade3_proportion_of_lung_area,
-      grade4_proportion_of_lung_area
+      grade4_proportion_of_lung_area,
+      grade5_proportion_of_lung_area
     ),
     names_to = "area_grade",
     values_to = "proportion_of_lung_area"
@@ -4133,6 +4414,7 @@ plot1 <- graph_data %>%
   # rearrange graph so grade 4 is on top
   mutate(area_grade = factor(area_grade,
     levels = c(
+      "5",
       "4",
       "3",
       "2",
@@ -4146,7 +4428,7 @@ plot1 <- graph_data %>%
     color = full_group,
     text = paste0(
       "</br>",
-      grouping_labels,
+      grouping_labels, sample_info_labels,
       "<b>", individual_unit, " count: </b>", number_of_individuals, "</br>",
       "<b>", subindividual_unit, " count: </b>", subindividual_count, "</br>",
       "<b>Area grade: </b>", area_grade, "</br>",
@@ -4218,12 +4500,17 @@ figure_caption <- paste0("Graph 022: Stacked bar graph of the proportion of lung
 
 ```{r graph_023, fig.cap= figure_caption}
 graph_data <- Slide_Areas %>%
-  select(individual_id, subindividual_id, full_group, all_of(full_grouping_vars), number_of_tumors, total_tumor_area_in_image, total_tissue_area_in_image) %>%
+  select(individual_id, subindividual_id, full_group, all_of(full_grouping_vars),all_of(sample_info_vars),
+         number_of_tumors, total_tumor_area_in_image, total_tissue_area_in_image) %>%
   mutate(total_tumor_proportion_of_lung_area = total_tumor_area_in_image / total_tissue_area_in_image)
 
 plot1 <- graph_data %>%
-  rowwise() %>%
-  mutate(grouping_labels = paste0("<b>", full_grouping_vars_labels, ": </b>", across(all_of(full_grouping_vars)), "</br>", collapse = "")) %>%
+  rowwise() %>% 
+  make_formatted_labels(full_grouping_vars,full_grouping_vars_labels,"grouping_labels") %>%
+  make_formatted_labels(sample_info_vars,sample_info_vars_labels,"sample_info_labels") %>%
+  group_by(individual_id) %>%
+  mutate(subindividual_count = n()) %>%
+  ungroup() %>%
   ggplot(aes(
     x = individual_id,
     y = total_tumor_proportion_of_lung_area,
@@ -4233,7 +4520,7 @@ plot1 <- graph_data %>%
       "</br>",
       "<b>", individual_var_label, ": </b>", individual_id, "</br>",
       "<b>", subindividual_var_label, ": </b>", subindividual_id, "</br>",
-      grouping_labels,
+      grouping_labels, sample_info_labels,
       "<b>Tumor Count: </b>", number_of_tumors, "</br>",
       "<b>Total tumor area: </b>", format(round(total_tumor_area_in_image, 0), big.mark = ","), " µm<sup>2</sup>", "</br>",
       "<b>Total lung area: </b>", format(round(total_tissue_area_in_image, 0), big.mark = ","), " µm<sup>2</sup>", "</br>",
@@ -4241,7 +4528,16 @@ plot1 <- graph_data %>%
     )
   )) +
   geom_point() + # plot scatter aligned dot plot
-  stat_summary(fun = mean, fun.min = min, fun.max = max, shape = 3, size = 2) +
+  {if (max(graph_data$subindividual_count) > 1) 
+      list(
+  stat_summary(
+    fun = mean,
+    fun.min = min,
+    fun.max = max,
+    shape = 3,
+    size = 2
+  ))
+      } +
   scale_color_manual(values = group_colors) + # outline bars using colors based on group
   scale_y_continuous(limits = c(0,1)) +
   ggtitle("Tumor proportion of lung area", paste("by", individual_unit)) + # add descriptive title and subtitle
@@ -4270,8 +4566,12 @@ ggplotly_subtitle(plot1, hoverinfo = "text") %>%
       side = "top"
     ))
   ) %>%
-  format_plotly_trace("scatter", "markers+lines", hoverinfo = "y", marker = list(opacity = 0.6)) %>%
-  format_plotly_legend("full_group", full_group_info_list, "full_group")
+  format_plotly_legend("full_group", full_group_info_list, "full_group") %>%
+  {if (max(graph_data$subindividual_count) > 1) 
+  format_plotly_trace("scatter", "lines+markers",
+    hoverinfo = "y",
+    marker = list(opacity = 0.6)
+  ) else . }
 
 # write graph data to file
 write.csv(graph_data, file.path(path_to_graph_data, "graph_023_data.csv"), row.names = FALSE)
@@ -4281,9 +4581,7 @@ figure_caption <- paste0(
   "Graph 023: Dot plot of tumor counts for each slide in data set by", 
   paste_to_text_list(full_grouping_vars_labels), 
   ". Points are labeled with their ", 
-  individual_var_label, 
-  ". Data shown in this graph can be found in", 
-  file.path(path_to_graph_data, "graph_001_data.csv")
+  individual_var_label, "."
   )
 ```
 
@@ -4292,7 +4590,8 @@ figure_caption <- paste0(
 ```{r graph_024, fig.cap= figure_caption}
 graph_data <- Slide_Areas %>%
   group_by(individual_id) %>%
-  select(individual_id, subindividual_id, full_group, all_of(full_grouping_vars), total_tumor_area_in_image, total_tissue_area_in_image, number_of_tumors) %>%
+  select(individual_id, subindividual_id, full_group, all_of(full_grouping_vars),
+         all_of(sample_info_vars),total_tumor_area_in_image, total_tissue_area_in_image, number_of_tumors) %>%
   mutate(
     total_tumor_proportion_of_lung_area = sum(total_tumor_area_in_image) / sum(total_tissue_area_in_image),
     total_tumor_count = sum(number_of_tumors),
@@ -4306,16 +4605,14 @@ graph_formula <- total_tumor_proportion_of_lung_area ~ full_group
 stats_summary <- run_stats_summary(graph_data, graph_formula)
 
 if (!skip_stats) {
-  omni_test <- run_omnibus_test(stats_summary)
+  omni_test <- run_omnibus_test(stats_summary, useParametric = parametric_test_individuals)
   posthoc_test <- run_posthoc_test(omni_test, full_group_comparisons)
 }
 
 plot1 <- graph_data %>%
-  rowwise() %>%
-  mutate(grouping_labels = paste0("<b>", full_grouping_vars_labels, ": </b>",
-    across(all_of(full_grouping_vars)), "</br>",
-    collapse = ""
-  )) %>%
+  rowwise() %>% 
+  make_formatted_labels(full_grouping_vars,full_grouping_vars_labels,"grouping_labels") %>%
+  make_formatted_labels(sample_info_vars,sample_info_vars_labels,"sample_info_labels") %>%
   ggplot(aes(
     x = full_group,
     y = total_tumor_proportion_of_lung_area,
@@ -4324,7 +4621,7 @@ plot1 <- graph_data %>%
       "</br>",
       "<b>", individual_var_label, ": </b>", individual_id, "</br>",
       "<b>", subindividual_unit, " count: </b>", subindividual_count, "</br>",
-      grouping_labels,
+      grouping_labels, sample_info_labels,
       "<b>Tumor Count: </b>", total_tumor_count, "</br>",
       "<b>Total tumor area: </b>", format(round(total_tumor_area_in_image, 0),
         big.mark = ","
@@ -4403,11 +4700,12 @@ figure_caption <- paste0(
 ```{r graph_025, fig.cap= figure_caption}
 # plot proportion of tumor areas of each grade for each slide as stacked bar graph
 graph_data <- Tumor_Areas %>%
-  group_by(individual_id, tumor_grade) %>%
+  group_by(subindividual_id) %>%
+  mutate(total_tumor_count_in_subindividual = n()) %>%
+  group_by(subindividual_id, tumor_grade) %>%
   mutate(
     total_area_of_graded_tumors = sum(total_tumor_area),
-    subindividual_count = n_distinct(subindividual_id),
-    graded_tumor_count_in_individual = n()
+    graded_tumor_count_in_subindividual = n()
   ) %>%
   slice(1) %>%
   left_join(Slide_Areas,
@@ -4416,17 +4714,24 @@ graph_data <- Tumor_Areas %>%
   ) %>%
   group_by(individual_id) %>%
   mutate(
-    total_tumor_count_in_individual = sum(graded_tumor_count_in_individual),
-    total_tissue_area_in_individual = sum(total_tissue_area_in_image)
+    total_tumor_count_in_individual = sum(total_tumor_count_in_subindividual)
   ) %>%
   group_by(individual_id, tumor_grade) %>%
-  mutate(total_grade_tumor_proportion_of_lung_area = total_area_of_graded_tumors / total_tissue_area_in_individual) %>%
+  mutate(
+    subindividual_count = n(),
+    total_tissue_area_in_individual = sum(total_tissue_area_in_image),
+     total_graded_tumor_count_in_individual = sum(graded_tumor_count_in_subindividual),
+     total_graded_tumor_area_in_individual = sum(total_area_of_graded_tumors),
+     total_grade_tumor_proportion_of_lung_area = total_graded_tumor_area_in_individual /
+      total_tissue_area_in_individual) %>% 
+  ungroup() %>%
   select(
     individual_id, full_group,
     all_of(full_grouping_vars),
+    all_of(sample_info_vars),
     tumor_grade,
     subindividual_count,
-    graded_tumor_count_in_individual,
+    total_graded_tumor_count_in_individual,
     total_area_of_graded_tumors,
     total_tumor_count_in_individual,
     total_tissue_area_in_individual,
@@ -4434,12 +4739,9 @@ graph_data <- Tumor_Areas %>%
   )
 
 plot1 <- graph_data %>%
-  rowwise() %>%
-  mutate(grouping_labels = paste0("<b>", full_grouping_vars_labels, ": </b>",
-    across(all_of(full_grouping_vars)),
-    "</br>",
-    collapse = ""
-  )) %>%
+  rowwise() %>% 
+  make_formatted_labels(full_grouping_vars,full_grouping_vars_labels,"grouping_labels") %>%
+  make_formatted_labels(sample_info_vars,sample_info_vars_labels,"sample_info_labels") %>%
   ggplot(aes(
     x = individual_id,
     y = total_grade_tumor_proportion_of_lung_area,
@@ -4449,9 +4751,9 @@ plot1 <- graph_data %>%
       "</br>",
       "<b>", individual_var_label, ": </b>", individual_id, "</br>",
       "<b>", subindividual_unit, " count: </b>", subindividual_count, "</br>",
-      grouping_labels,
+      grouping_labels, sample_info_labels,
       "<b>Total Tumor count: </b>", total_tumor_count_in_individual, "</br>",
-      "<b>Grade ", tumor_grade, " Tumor count: </b>", graded_tumor_count_in_individual, "</br>",
+      "<b>Grade ", tumor_grade, " Tumor count: </b>", total_graded_tumor_count_in_individual, "</br>",
       "<b>Total Grade ", tumor_grade, " area: </b>",
       format(round(total_area_of_graded_tumors, 0),
         big.mark = ","
@@ -4518,30 +4820,38 @@ figure_caption <- "Graph 025: Stacked bar graph showing the proportion of lung a
 ```{r graph_026, fig.cap= figure_caption}
 # plot proportion of tumor areas of each grade for each group as stacked bar graph
 graph_data <- Tumor_Areas %>%
-  group_by(individual_id, tumor_grade) %>%
+  group_by(subindividual_id) %>%
+  mutate(total_tumor_count_in_subindividual = n()) %>%
+  group_by(subindividual_id, tumor_grade) %>%
   mutate(
-    total_area_of_graded_tumors = sum(total_tumor_area),
-    subindividual_count = n_distinct(subindividual_id),
-    graded_tumor_count_in_individual = n()
+    total_area_of_graded_tumors_in_subindividual = sum(total_tumor_area),
+    graded_tumor_count_in_subindividual = n()
   ) %>%
   slice(1) %>%
   left_join(Slide_Areas,
     by = c("subindividual_id" = "subindividual_id"),
     suffix = c("", ".y")
   ) %>%
-  group_by(full_group) %>%
+  group_by(individual_id) %>%
   mutate(
-    total_tumor_count_in_individual = sum(graded_tumor_count_in_individual),
-    total_tissue_area_in_individual = sum(total_tissue_area_in_image)
+    total_tumor_count_in_individual = sum(total_tumor_count_in_subindividual)
   ) %>%
   group_by(individual_id, tumor_grade) %>%
-  mutate(total_grade_tumor_proportion_of_lung_area = total_area_of_graded_tumors / total_tissue_area_in_individual) %>%
+  mutate(
+    subindividual_count = n_distinct(subindividual_id),
+    total_area_of_graded_tumors_in_individual = sum(total_area_of_graded_tumors_in_subindividual),
+    total_graded_tumor_count_in_individual = sum(graded_tumor_count_in_subindividual),
+    total_tissue_area_in_individual = sum(total_tissue_area_in_image),
+    total_grade_tumor_proportion_of_lung_area = total_area_of_graded_tumors_in_individual /
+      total_tissue_area_in_individual) %>%
+  slice(1) %>%
   select(
     individual_id, full_group,
     all_of(full_grouping_vars),
+    all_of(sample_info_vars),
     tumor_grade, subindividual_count,
-    graded_tumor_count_in_individual,
-    total_area_of_graded_tumors,
+    total_graded_tumor_count_in_individual,
+    total_area_of_graded_tumors_in_individual,
     total_tumor_count_in_individual,
     total_tissue_area_in_individual,
     total_grade_tumor_proportion_of_lung_area
@@ -4550,17 +4860,18 @@ graph_data <- Tumor_Areas %>%
   mutate(
     number_of_individuals = n_distinct(individual_id),
     number_of_subindividuals = sum(subindividual_count),
-    graded_tumor_count_in_group = sum(graded_tumor_count_in_individual),
-    total_area_of_graded_tumors_in_group = sum(total_area_of_graded_tumors),
+    graded_tumor_count_in_group = sum(total_graded_tumor_count_in_individual),
+    total_area_of_graded_tumors_in_group = sum(total_area_of_graded_tumors_in_individual),
     total_tumor_count_in_group = sum(total_tumor_count_in_individual),
     total_tissue_area_in_group = sum(total_tissue_area_in_individual),
-    total_grade_tumor_proportion_of_lung_area_in_group =
-      sum(total_grade_tumor_proportion_of_lung_area)
+    total_grade_tumor_proportion_of_lung_area_in_group = total_area_of_graded_tumors_in_group / 
+      total_tissue_area_in_group
   ) %>%
   slice(1) %>%
   select(
     full_group,
     all_of(full_grouping_vars),
+    all_of(sample_info_vars),
     tumor_grade, number_of_individuals,
     number_of_subindividuals,
     graded_tumor_count_in_group,
@@ -4571,14 +4882,9 @@ graph_data <- Tumor_Areas %>%
   )
 
 plot1 <- graph_data %>%
-  rowwise() %>%
-  mutate(grouping_labels = paste0("<b>",
-    full_grouping_vars_labels,
-    ": </b>",
-    across(all_of(full_grouping_vars)),
-    "</br>",
-    collapse = ""
-  )) %>%
+  rowwise() %>% 
+  make_formatted_labels(full_grouping_vars,full_grouping_vars_labels,"grouping_labels") %>%
+  make_formatted_labels(sample_info_vars,sample_info_vars_labels,"sample_info_labels") %>%
   ggplot(aes(
     x = full_group,
     y = total_grade_tumor_proportion_of_lung_area_in_group,
@@ -4586,7 +4892,7 @@ plot1 <- graph_data %>%
     color = full_group,
     text = paste0(
       "</br>",
-      grouping_labels,
+      grouping_labels, sample_info_labels,
       "<b>", individual_unit, " count: </b>", number_of_individuals, "</br>",
       "<b>", subindividual_unit, " count: </b>", number_of_subindividuals, "</br>",
       "<b>Total Tumor count: </b>", total_tumor_count_in_group, "</br>",
@@ -4659,11 +4965,12 @@ figure_caption <- paste0("Graph 026: Stacked bar graph showing the proportion of
 
 ```{r graph_027, fig.cap= figure_caption}
 graph_data <- Tumor_Areas %>%
-  group_by(individual_id, tumor_grade) %>%
+  group_by(subindividual_id) %>%
+  mutate(total_tumor_count_in_subindividual = n()) %>%
+  group_by(subindividual_id, tumor_grade) %>%
   mutate(
-    total_area_of_graded_tumors = sum(total_tumor_area),
-    subindividual_count = n_distinct(subindividual_id),
-    graded_tumor_count_in_individual = n()
+    total_area_of_graded_tumors_in_subindividual = sum(total_tumor_area),
+    graded_tumor_count_in_subindividual = n()
   ) %>%
   slice(1) %>%
   left_join(Slide_Areas,
@@ -4672,33 +4979,35 @@ graph_data <- Tumor_Areas %>%
   ) %>%
   group_by(individual_id) %>%
   mutate(
-    total_tumor_count_in_individual = sum(graded_tumor_count_in_individual),
-    total_tissue_area_in_individual = sum(total_tissue_area_in_image)
+    total_tumor_count_in_individual = sum(total_tumor_count_in_subindividual)
   ) %>%
   group_by(individual_id, tumor_grade) %>%
   mutate(
-    total_grade_tumor_proportion_of_lung_area =
-      total_area_of_graded_tumors / total_tissue_area_in_individual
-  ) %>%
+    subindividual_count = n_distinct(subindividual_id),
+    total_area_of_graded_tumors_in_individual = sum(total_area_of_graded_tumors_in_subindividual),
+    total_graded_tumor_count_in_individual = sum(graded_tumor_count_in_subindividual),
+    total_tissue_area_in_individual = sum(total_tissue_area_in_image),
+    total_grade_tumor_proportion_of_lung_area = total_area_of_graded_tumors_in_individual /
+      total_tissue_area_in_individual) %>%
+  slice(1) %>%
   select(
-    individual_id,
-    full_group,
+    individual_id, full_group,
     all_of(full_grouping_vars),
-    tumor_grade,
-    subindividual_count,
-    graded_tumor_count_in_individual,
-    total_area_of_graded_tumors,
+    all_of(sample_info_vars),
+    tumor_grade, subindividual_count,
+    total_graded_tumor_count_in_individual,
+    total_area_of_graded_tumors_in_individual,
     total_tumor_count_in_individual,
     total_tissue_area_in_individual,
     total_grade_tumor_proportion_of_lung_area
-  )
+  ) 
 
 # perform statistics
 graph_formula <- total_grade_tumor_proportion_of_lung_area ~ full_group:tumor_grade
 stats_summary <- run_stats_summary(graph_data, graph_formula)
 
 if (!skip_stats) {
-  omni_test <- run_omnibus_test(stats_summary)
+  omni_test <- run_omnibus_test(stats_summary, useParametric = parametric_test_individuals)
   posthoc_test <- run_posthoc_test(omni_test, full_group_tumor_grade_comparisons)
 }
 
@@ -4781,6 +5090,7 @@ graph_data <- Tumor_Areas %>%
     subindividual_id,
     full_group,
     all_of(full_grouping_vars),
+    all_of(sample_info_vars),
     total_tumor_area
   )
 
@@ -4849,6 +5159,7 @@ graph_data <- Tumor_Areas %>%
     subindividual_id,
     full_group,
     all_of(full_grouping_vars),
+    all_of(sample_info_vars),
     total_tumor_area
   )
 
@@ -4857,7 +5168,7 @@ graph_formula <- total_tumor_area ~ full_group
 stats_summary <- run_stats_summary(graph_data, graph_formula)
 
 if (!skip_stats) {
-  omni_test <- run_omnibus_test(stats_summary,useParametric = FALSE)
+  omni_test <- run_omnibus_test(stats_summary, useParametric = parametric_test_tumors)
   posthoc_test <- run_posthoc_test(omni_test, full_group_comparisons)
 }
 
@@ -4935,6 +5246,7 @@ graph_data <- Tumor_Areas %>%
     subindividual_id,
     full_group,
     all_of(full_grouping_vars),
+    all_of(sample_info_vars),
     tumor_grade,
     total_tumor_area
   )
@@ -4944,7 +5256,7 @@ graph_formula <- total_tumor_area ~ full_group:tumor_grade
 stats_summary <- run_stats_summary(graph_data, graph_formula)
 
 if (!skip_stats) {
-  omni_test <- run_omnibus_test(stats_summary)
+  omni_test <- run_omnibus_test(stats_summary, useParametric = parametric_test_tumors)
   posthoc_test <- run_posthoc_test(omni_test, full_group_tumor_grade_comparisons)
 }
 
@@ -5026,6 +5338,7 @@ graph_data <- Tumor_Areas %>%
     subindividual_id,
     full_group,
     all_of(full_grouping_vars),
+    all_of(sample_info_vars),
     tumor_grade,
     shannon_diversity_index
   ) %>%
@@ -5036,11 +5349,12 @@ graph_data <- Tumor_Areas %>%
 # no stats for this graph
 
 plot1 <- graph_data %>%
-  rowwise() %>%
-  mutate(grouping_labels = paste0("<b>", full_grouping_vars_labels, ": </b>",
-    across(all_of(full_grouping_vars)), "</br>",
-    collapse = ""
-  )) %>%
+  rowwise() %>% 
+  make_formatted_labels(full_grouping_vars,full_grouping_vars_labels,"grouping_labels") %>%
+  make_formatted_labels(sample_info_vars,sample_info_vars_labels,"sample_info_labels") %>%
+  group_by(individual_id) %>%
+  mutate(subindividual_count = n()) %>%
+  ungroup() %>%
   ggplot(aes(
     x = individual_id,
     y = median_sdi,
@@ -5050,18 +5364,21 @@ plot1 <- graph_data %>%
       "</br>",
       "<b>", individual_var_label, ": </b>", individual_id, "</br>",
       "<b>", subindividual_var_label, ": </b>", subindividual_id, "</br>",
-      grouping_labels,
+      grouping_labels, sample_info_labels,
       "<b>Median SDI: </b>", median_sdi
     )
   )) +
   geom_point() +
+  {if (max(graph_data$subindividual_count) > 1) 
+      list(
   stat_summary(
     fun = mean,
     fun.min = min,
     fun.max = max,
     shape = 3,
     size = 2
-  ) +
+  ))
+      } +
   ggtitle(
     "Median individual tumor heterogeneity (SDI)",
     paste("in each", individual_unit)
@@ -5096,11 +5413,13 @@ ggplotly_subtitle(plot1, hoverinfo = "text") %>%
       side = "top"
     ))
   ) %>%
-  format_plotly_trace("scatter", "markers+lines",
+  format_plotly_legend("full_group", full_group_info_list, "full_group") %>%
+  {if (max(graph_data$subindividual_count) > 1) 
+  format_plotly_trace("scatter", "lines+markers",
     hoverinfo = "y",
     marker = list(opacity = 0.6)
-  ) %>%
-  format_plotly_legend("full_group", full_group_info_list, "full_group")
+  ) else . }
+
 
 # write graph data to file
 write.csv(graph_data, file.path(path_to_graph_data, "graph_031_data.csv"), row.names = FALSE)
@@ -5109,7 +5428,6 @@ figure_caption <- paste0(
   "Graph 031: Dot plot of median Shannon Diversity Index ($SDI$) of individual tumors from each ",
   individual_unit,
   ". An $SDI = 0$ indicates only one grade is present within an individual tumor.",
-  " The maximum possible $SDI$ for these comparisons is $ln(4) = 1.386$.",
   " The values in this graph may be close to $0$ due to the presence of large numbers of small, homogeneous tumors."
   )
 ```
@@ -5124,6 +5442,7 @@ graph_data <- Tumor_Areas %>%
     subindividual_id,
     full_group,
     all_of(full_grouping_vars),
+    all_of(sample_info_vars),
     tumor_grade,
     shannon_diversity_index
   )
@@ -5131,26 +5450,24 @@ graph_data <- Tumor_Areas %>%
 #downsample data randomly and adjust alpha values for plotting
 downssampled_graph_data <- graph_data %>% 
   group_by(full_group) %>%
-  slice_sample(n = 5000) %>%
-  mutate(alpha_val =  min(10/n(),0.6))
+  slice_sample(n = 5000)
 
 plot1 <- downssampled_graph_data %>% 
   ggplot(aes(
     x = full_group,
     y = shannon_diversity_index,
     color = full_group,
-    alpha = alpha_val
   )) +
   geom_point(
     position = position_jitter(width = 0.4),
-    size = 1
+    size = 1,
+    alpha = 0.3
   ) +
   ggtitle(
     "Individual tumor heterogeneity (SDI)",
     paste("by", paste_to_text_list(full_grouping_vars_labels))
   ) +
   scale_color_manual(values = group_colors) +
-  scale_alpha_continuous(range = c(0.001,0.6),guide=FALSE) +
   scale_y_continuous(breaks = c(0.0, 0.5, 0.7, 1.0, 1.4)) +
   scale_x_discrete(labels = present_full_group_labels$multiline)+
   theme(
@@ -5183,7 +5500,6 @@ figure_caption <- paste0(
   "Graph 032: Dot plot of median Shannon Diversity Index ($SDI$) of individual tumors from each ",
   paste_to_text_list(full_grouping_vars_labels),
   ". An $SDI = 0$ indicates only one grade is present within an individual tumor.",
-  " The maximum possible $SDI$ for these comparisons is $ln(4) = 1.386$. ",
   "Groups with > 5000 tumors are randomly sampled."
 )
 ```
@@ -5197,6 +5513,7 @@ graph_data <- Tumor_Areas %>%
     subindividual_id,
     full_group,
     all_of(full_grouping_vars),
+    all_of(sample_info_vars),
     shannon_diversity_index
   )
 
@@ -5205,7 +5522,7 @@ graph_formula <- shannon_diversity_index ~ full_group
 stats_summary <- run_stats_summary(graph_data, graph_formula)
 
 if (!skip_stats) {
-  omni_test <- run_omnibus_test(stats_summary, useParametric = FALSE)
+  omni_test <- run_omnibus_test(stats_summary, useParametric = parametric_test_tumors)
   posthoc_test <- run_posthoc_test(omni_test, full_group_comparisons)
 }
 
@@ -5272,7 +5589,6 @@ figure_caption <- paste0(
   "Graph 033: Box plot of Shannon's diversity index of individual tumors from each ",
   paste_to_text_list(full_grouping_vars_labels), 
   ". An $SDI = 0$ indicates only one grade is present within an individual tumor.",
-  " The maximum possible $SDI$ for these comparisons is $ln(4) = 1.386$.",
   "Plots show min to max as whiskers with median and IQR shown as boxes.")
 ```
 
@@ -5284,6 +5600,7 @@ graph_data <- Tumor_Areas %>%
     subindividual_id,
     full_group,
     all_of(full_grouping_vars),
+    all_of(sample_info_vars),
     tumor_grade,
     shannon_diversity_index
   )
@@ -5293,7 +5610,7 @@ graph_formula <- shannon_diversity_index ~ full_group:tumor_grade
 stats_summary <- run_stats_summary(graph_data, graph_formula)
 
 if (!skip_stats) {
-  omni_test <- run_omnibus_test(stats_summary, useParametric = FALSE)
+  omni_test <- run_omnibus_test(stats_summary, useParametric = parametric_test_tumors)
   posthoc_test <- run_posthoc_test(omni_test, full_group_tumor_grade_comparisons)
 }
 
@@ -5356,10 +5673,9 @@ if (!skip_stats) {
 write.csv(graph_data, file.path(path_to_graph_data, "graph_034_data.csv"), row.names = FALSE)
 
 figure_caption <- paste0(
-  "Graph 033: Box plot of Shannon's diversity index of individual tumors of each grade from each ",
+  "Graph 034: Box plot of Shannon's diversity index of individual tumors of each grade from each ",
   paste_to_text_list(full_grouping_vars_labels), 
   ". An $SDI = 0$ indicates only one grade is present within an individual tumor.",
-  " The maximum possible $SDI$ for these comparisons is $ln(4) = 1.386$.",
   "$SDI$ is expected to increase with the overall grade of individual tumors. ",
   "Plots show min to max as whiskers with median and IQR shown as boxes.")
 ```
@@ -5373,6 +5689,8 @@ graph_data <- Tumor_Areas %>%
     individual_id,
     subindividual_id,
     full_group,
+    all_of(full_grouping_vars),
+    all_of(sample_info_vars),
     tumor_uid,
     tumor_grade,
     total_tumor_area,
@@ -5409,10 +5727,9 @@ print(plot1)
 write.csv(graph_data, file.path(path_to_graph_data, "graph_035_data.csv"), row.names = FALSE)
 
 figure_caption <- paste0(
-  "Graph 034: Scatter plot of Shannon's Diversity Index ($SDI$) against tumor area for individual tumors from each ",
+  "Graph 035: Scatter plot of Shannon's Diversity Index ($SDI$) against tumor area for individual tumors from each ",
   paste_to_text_list(full_grouping_vars_labels),
-  ". An $SDI = 0$ indicates only one grade is present within an individual tumor.",
-  " The maximum possible $SDI$ for these comparisons is $ln(4) = 1.386$."
+  ". An $SDI = 0$ indicates only one grade is present within an individual tumor."
   )
 ```
 
@@ -5430,6 +5747,7 @@ graph_data <- Tumor_Areas %>%
     subindividual_id,
     full_group,
     all_of(full_grouping_vars),
+    all_of(sample_info_vars),
     tumor_grade,
     shannon_equitability_index
   ) %>%
@@ -5440,14 +5758,12 @@ graph_data <- Tumor_Areas %>%
 # no stats for this graph
 
 plot1 <- graph_data %>%
-  rowwise() %>%
-  mutate(grouping_labels = paste0("<b>",
-    full_grouping_vars_labels,
-    ": </b>",
-    across(all_of(full_grouping_vars)),
-    "</br>",
-    collapse = ""
-  )) %>%
+  rowwise() %>% 
+  make_formatted_labels(full_grouping_vars,full_grouping_vars_labels,"grouping_labels") %>%
+  make_formatted_labels(sample_info_vars,sample_info_vars_labels,"sample_info_labels") %>%
+  group_by(individual_id) %>%
+  mutate(subindividual_count = n()) %>%
+  ungroup() %>%
   ggplot(aes(
     x = individual_id,
     y = median_sei,
@@ -5457,18 +5773,21 @@ plot1 <- graph_data %>%
       "</br>",
       "<b>", individual_var_label, ": </b>", individual_id, "</br>",
       "<b>", subindividual_var_label, ": </b>", subindividual_id, "</br>",
-      grouping_labels,
+      grouping_labels, sample_info_labels,
       "<b>Median SEI: </b>", median_sei
     )
   )) +
   geom_point() +
+  {if (max(graph_data$subindividual_count) > 1) 
+      list(
   stat_summary(
     fun = mean,
     fun.min = min,
     fun.max = max,
     shape = 3,
     size = 2
-  ) +
+  ))
+      } +
   ggtitle(
     "Median individual tumor heterogeneity (SEI)",
     paste("by", individual_unit)
@@ -5500,17 +5819,18 @@ ggplotly_subtitle(plot1, hoverinfo = "text") %>%
       side = "top"
     ))
   ) %>%
-  format_plotly_trace("scatter", "markers+lines",
+  format_plotly_legend("full_group", full_group_info_list, "full_group") %>% 
+  {if (max(graph_data$subindividual_count) > 1) 
+  format_plotly_trace("scatter", "lines+markers",
     hoverinfo = "y",
     marker = list(opacity = 0.6)
-  ) %>%
-  format_plotly_legend("full_group", full_group_info_list, "full_group")
+  ) else . }
 
 # write graph data to file
 write.csv(graph_data, file.path(path_to_graph_data, "graph_036_data.csv"), row.names = FALSE)
 
 figure_caption <- paste0(
-  "Graph 035: Dot plot of median Shannon Equitability Index ($SEI$) of individual tumors from each ",
+  "Graph 036: Dot plot of median Shannon Equitability Index ($SEI$) of individual tumors from each ",
   individual_unit,
   ". An $SEI = 0$ indicates only one grade is present within an individual tumor.",
   " The maximum possible $SEI = 1$ occurs when all grades present occur in equal proportion.",
@@ -5528,6 +5848,7 @@ graph_data <- Tumor_Areas %>%
     subindividual_id,
     full_group,
     all_of(full_grouping_vars),
+    all_of(sample_info_vars),
     tumor_grade,
     shannon_equitability_index
   )
@@ -5535,26 +5856,24 @@ graph_data <- Tumor_Areas %>%
 #downsample data randomly and adjust alpha values for plotting
 downssampled_graph_data <- graph_data %>% 
   group_by(full_group) %>%
-  slice_sample(n = 5000) %>%
-  mutate(alpha_val =  min(10/n(),0.6))
+  slice_sample(n = 5000)
 
 plot1 <- downssampled_graph_data %>%
   ggplot(aes(
     x = full_group,
     y = shannon_equitability_index,
     color = full_group,
-    alpha = alpha_val
   )) +
   geom_point(
     position = position_jitter(),
-    size = 1
+    size = 1,
+    alpha = 0.3
   ) +
   ggtitle(
     "Individual tumor heterogeneity (SEI)",
     paste("by", paste_to_text_list(full_grouping_vars_labels))
   ) +
   scale_color_manual(values = group_colors) +
-  scale_alpha_continuous(range = c(0.001,0.6),guide=FALSE) +
   scale_x_discrete(labels = present_full_group_labels$multiline) +
   guides(colour = guide_legend(override.aes = list(
     size = 3,
@@ -5581,7 +5900,7 @@ print(plot1)
 write.csv(graph_data, file.path(path_to_graph_data, "graph_037_data.csv"), row.names = FALSE)
 
 figure_caption <- paste0(
-  "Graph 036: Dot plot of theShannon Equitability Index ($SEI$) of individual tumors from each ",
+  "Graph 037: Dot plot of theShannon Equitability Index ($SEI$) of individual tumors from each ",
   full_grouping_label,
   ". An $SEI = 0$ indicates only one grade is present within an individual tumor.",
   "The maximum possible $SEI = 1$ occurs when all grades present occur in equal proportion. ",
@@ -5597,6 +5916,7 @@ graph_data <- Tumor_Areas %>%
     subindividual_id,
     full_group,
     all_of(full_grouping_vars),
+    all_of(sample_info_vars),
     shannon_equitability_index
   )
 
@@ -5605,7 +5925,7 @@ graph_formula <- shannon_equitability_index ~ full_group
 stats_summary <- run_stats_summary(graph_data, graph_formula)
 
 if (!skip_stats) {
-  omni_test <- run_omnibus_test(stats_summary, useParametric = FALSE)
+  omni_test <- run_omnibus_test(stats_summary, useParametric = parametric_test_tumors)
   posthoc_test <- run_posthoc_test(omni_test, full_group_comparisons)
 }
 
@@ -5669,7 +5989,7 @@ if (!skip_stats) {
 write.csv(graph_data, file.path(path_to_graph_data, "graph_038_data.csv"), row.names = FALSE)
 
 figure_caption <- paste0(
-  "Graph 033: Box plot of Shannon's Equitability Index of individual tumors from each ",
+  "Graph 038: Box plot of Shannon's Equitability Index of individual tumors from each ",
   paste_to_text_list(full_grouping_vars_labels), 
   ". An $SEI = 0$ indicates only one grade is present within an individual tumor.",
 " The maximum possible $SEI = 1$ occurs when all grades present occur in equal proportion.",
@@ -5685,6 +6005,7 @@ graph_data <- Tumor_Areas %>%
     subindividual_id,
     full_group,
     all_of(full_grouping_vars),
+    all_of(sample_info_vars),
     tumor_grade,
     shannon_equitability_index
   )
@@ -5694,7 +6015,7 @@ graph_formula <- shannon_equitability_index ~ full_group:tumor_grade
 stats_summary <- run_stats_summary(graph_data, graph_formula)
 
 if (!skip_stats) {
-  omni_test <- run_omnibus_test(stats_summary)
+  omni_test <- run_omnibus_test(stats_summary, useParametric = parametric_test_tumors)
   posthoc_test <- run_posthoc_test(omni_test, full_group_comparisons)
 }
 
@@ -5754,7 +6075,7 @@ if (!skip_stats) {
 write.csv(graph_data, file.path(path_to_graph_data, "graph_039_data.csv"), row.names = FALSE)
 
 figure_caption <- paste0(
-  "Graph 037: Box plot of Shannon's Equitability Index ($SEI$) of individual tumors of each grade from each ",
+  "Graph 039: Box plot of Shannon's Equitability Index ($SEI$) of individual tumors of each grade from each ",
   paste_to_text_list(full_grouping_vars_labels),
   ". An $SEI = 0$ indicates only one grade is present within an individual tumor.",
   " The maximum possible $SEI = 1$ occurs when all grades present occur in equal proportion.",
@@ -5772,6 +6093,8 @@ graph_data <- Tumor_Areas %>%
     individual_id,
     subindividual_id,
     full_group,
+    all_of(full_grouping_vars),
+    all_of(sample_info_vars),
     tumor_uid,
     tumor_grade,
     total_tumor_area,
@@ -5814,7 +6137,7 @@ print(plot1)
 write.csv(graph_data, file.path(path_to_graph_data, "graph_040_data.csv"), row.names = FALSE)
 
 figure_caption <- paste0(
-  "Graph 038: Scatter plot of Shannon's Equitability Index ($SEI$) against tumor area for individual tumors from each "
+  "Graph 040: Scatter plot of Shannon's Equitability Index ($SEI$) against tumor area for individual tumors from each "
   , paste_to_text_list(full_grouping_vars_labels), 
   ". An $SEI = 0$ indicates only one grade is present within an individual tumor.",
   " The maximum possible $SEI = 1$ occurs when all grades present occur in equal proportion."
@@ -5836,6 +6159,8 @@ graph_data <- Tumor_Areas %>%
     individual_id,
     subindividual_id,
     full_group,
+    all_of(full_grouping_vars),
+    all_of(sample_info_vars),
     tumor_uid,
     tumor_grade,
     grade1_percentage,
@@ -5856,7 +6181,7 @@ graph_data <- Tumor_Areas %>%
 graph_data$tumor_uid <- factor(Tumor_Areas$tumor_uid, levels = Tumor_Areas$tumor_uid)
 
 downsample_method = "range" # "random" or "range"
-downsample_size = 10000
+downsample_size = 5000
 
 heterogeneity_plots_list <- list()
 # iterate over each stain and generate plot
@@ -5923,13 +6248,14 @@ for (fg in present_full_group_labels$label) {
       size = .1,
       aes(
         x = tumor_uid,
-        y = abs(as.numeric(tumor_grade) - count_tumor_grades_analyzed) / count_tumor_grades_analyzed
+        y = abs((as.numeric(tumor_grade) - (count_tumor_grades_analyzed + 1))) /
+          count_tumor_grades_analyzed
       )
     ) +
     scale_y_continuous(
       name = "Proportion of tumor area",
       sec.axis = sec_axis(
-        trans = ~ . * 5,
+        trans = ~ . * count_tumor_grades_analyzed,
         name = "Tumor Grade"
       )
     ) +
@@ -5967,7 +6293,7 @@ write.csv(graph_data, file.path(path_to_graph_data, "graph_041_data.csv"), row.n
 
 
 figure_caption <- paste0(
-  "Graph 039: Bar graph(s) of proportion of grades in individual tumors from each ",
+  "Graph 041: Bar graph(s) of proportion of grades in individual tumors from each ",
   paste_to_text_list(full_grouping_vars_labels),
   ". Each bar represents a single tumor.",
   " Black dots indicate the overall tumor grade assigned based on the highest tumor grade present in the tumor that comprises ≥ 10% of the tumor area. ",
@@ -5982,7 +6308,10 @@ graph_data <- Tumor_Areas %>%
   select(
     individual_id,
     subindividual_id,
-    full_group, tumor_uid,
+    full_group,
+    all_of(full_grouping_vars),
+    all_of(sample_info_vars),
+    tumor_uid,
     tumor_grade,
     grades_present_in_tumor
   )
@@ -6039,14 +6368,16 @@ write.csv(graph_data, file.path(path_to_graph_data, "graph_042_data.csv"), row.n
 print(plot1)
 
 figure_caption <- paste0(
-  "Graph 040: Dot plot of number of grades present in individual tumors of each grade from each ",
+  "Graph 042: Dot plot of number of grades present in individual tumors of each grade from each ",
   paste_to_text_list(full_grouping_vars_labels),
   ". Each point represents an individual tumor. ",
   "Groups with > 5000 tumors are randomly sampled."
   )
 ```
 
-
+```{r end_of_he_analysis}
+# DONE WITH H&E ANALYSIS
+```
 
 ```{r add_ihc_headers, echo = FALSE, message = FALSE, warning = FALSE, results = 'asis'}
 # make headings
