@@ -1,2 +1,4 @@
 .DS_Store
 *.html
+GLASS-AI_log*.txt
+*.prj
