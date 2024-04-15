@@ -1,4 +1,4 @@
-classdef GLASS_AI_APP_dev < matlab.apps.AppBase
+classdef GLASS_AI_APP < matlab.apps.AppBase
 
     % Properties that correspond to app components
     properties (Access = public)
@@ -21,6 +21,7 @@ classdef GLASS_AI_APP_dev < matlab.apps.AppBase
         TumorsizethresholdsqmLabel      matlab.ui.control.Label
         TumorSizeThresholdInput         matlab.ui.control.NumericEditField
         StainNormalizationParametersTab  matlab.ui.container.Tab
+        RemovepurecolorpixelsCheckBox   matlab.ui.control.CheckBox
         NormMinimumTissuePercent        matlab.ui.control.NumericEditField
         MinimumTissuePercentEditFieldLabel  matlab.ui.control.Label
         NormPseudomaxTolerance          matlab.ui.control.NumericEditField
@@ -143,7 +144,7 @@ classdef GLASS_AI_APP_dev < matlab.apps.AppBase
     properties (Access = private)
 
         % PARAMETERS %
-        GLASSAI_APP_VERSION = 'v1.0' % Version of GLASS-AI standalone app
+        GLASSAI_APP_VERSION = 'v1.0.1' % Version of GLASS-AI standalone app
         LAST_SELECTED_DIR % Path to last selected directory
         INPUT_PATH  % Path selected using BrowseButton
         OUTPUT_PATH % Path selected using OutputFolderButton
@@ -161,6 +162,7 @@ classdef GLASS_AI_APP_dev < matlab.apps.AppBase
         NORMALIZE_IO % Background intensity for stain normalization
         NORMALIZE_THRESHOLD % Minimum percent opaque pixels for normalization
         NORMALIZE_HEREF % Color vectors for hematoxylin and eosin stain
+        REMOVE_PURE_COLORS % Remove pure colors during stain normalization
         OUTPUT_IMAGE_PREVIEW % True = make preview figure of output images
         OUTPUT_GRADE_IMAGE_SCALE % scaling applied to grade map output image
         MAKE_SEGMENTATION_IMAGE % Generate labeled tumor segmentation image
@@ -1873,10 +1875,22 @@ classdef GLASS_AI_APP_dev < matlab.apps.AppBase
             % create working copy of input image
             workingImage = double(inputImage);
             workingImage = reshape(workingImage, [], 3);
-
+            if app.REMOVE_PURE_COLORS
+                %set pure color pixels to white
+                redPoints = workingImage(:,1)==255 & workingImage(:,2)==0 & workingImage(:,3)==0;
+                greenPoints = workingImage(:,1)==0 & workingImage(:,2)==255 & workingImage(:,3)==0;
+                bluePoints = workingImage(:,1)==0 & workingImage(:,2)==0 & workingImage(:,3)==255;
+                yellowPoints = workingImage(:,1)==255 & workingImage(:,2)==255 & workingImage(:,3)==0;
+                magentaPoints = workingImage(:,1)==255 & workingImage(:,2)==0 & workingImage(:,3)==255;
+                cyanPoints = workingImage(:,1)==0 & workingImage(:,2)==255 & workingImage(:,3)==255;
+                blackPoints = workingImage(:,1)==0 & workingImage(:,2)==0 & workingImage(:,3)==0;
+                
+                setTransparentPoints = any([redPoints greenPoints bluePoints yellowPoints magentaPoints cyanPoints blackPoints],2);
+                workingImage(setTransparentPoints,:) = 255;
+            end
             % calculate optical density
             OD = -log((workingImage+1)/app.NORMALIZE_IO);
-
+         
             % remove transparent pixels from vector calculation
             ODHat = OD(~any(OD < app.NORMALIZE_BETA, 2), :);
 
@@ -2596,7 +2610,12 @@ classdef GLASS_AI_APP_dev < matlab.apps.AppBase
 
             % make logfile
             app.logFileName = strcat("GLASS-AI_log_",dateString,".txt");
-            app.logFilePath = pwd;
+            if isdeployed
+                app.logFilePath = ctfroot;
+            else
+                app.logFilePath = pwd;
+            end
+            
             diary(fullfile(app.logFilePath,app.logFileName));
             
             %log system info
@@ -2618,6 +2637,7 @@ classdef GLASS_AI_APP_dev < matlab.apps.AppBase
             pause(1); 
             app.StatusLabel.Text="Loading GLASS-AI neural network...";
             app.VersionLabel.Text = app.GLASSAI_APP_VERSION;
+            fprintf("%s:\t%s\n","GLASS-AI version",app.GLASSAI_APP_VERSION)
             
             if isdeployed %do if standalone app
                 if ismac % default ctf is within app contents
@@ -2911,7 +2931,9 @@ classdef GLASS_AI_APP_dev < matlab.apps.AppBase
                 ];
             fprintf("%s:\t%.3f\t%.3f\t%.3f\n","Stain normalization hematoxylin", app.HemRedInput.Value,app.HemGreenInput.Value, app.HemBlueInput.Value);
             fprintf("%s:\t%.3f\t%.3f\t%.3f\n","Stain normalization eosin", app.EosRedInput.Value,app.EosGreenInput.Value, app.EosBlueInput.Value);
-
+            app.REMOVE_PURE_COLORS = app.RemovepurecolorpixelsCheckBox.Value;
+            fprintf("%s:\t%.3f\n","Remove pure colors during normalization", app.REMOVE_PURE_COLORS);
+            
             % Grade Map Colors tab
             app.NORMAL_ALVEOLI_COLOR = [app.NormalAlveoliColorEditField_R.Value, app.NormalAlveoliColorEditField_G.Value, app.NormalAlveoliColorEditField_B.Value];
             fprintf("%s:\t%.0f\t%.0f\t%.0f\n","Alveoli Color",app.NORMAL_ALVEOLI_COLOR(1),app.NORMAL_ALVEOLI_COLOR(2),app.NORMAL_ALVEOLI_COLOR(3))
@@ -3590,6 +3612,13 @@ classdef GLASS_AI_APP_dev < matlab.apps.AppBase
             app.NormMinimumTissuePercent.Position = [138 112 32 17];
             app.NormMinimumTissuePercent.Value = 1;
 
+            % Create RemovepurecolorpixelsCheckBox
+            app.RemovepurecolorpixelsCheckBox = uicheckbox(app.StainNormalizationParametersTab);
+            app.RemovepurecolorpixelsCheckBox.Tooltip = {'When checked, pure color pixels (i.e., with 255 or 0 for each RGB value) will be converted to pure white pixels during stain normalization.'};
+            app.RemovepurecolorpixelsCheckBox.Text = 'Remove pure color pixels';
+            app.RemovepurecolorpixelsCheckBox.Position = [9 83 158 22];
+            app.RemovepurecolorpixelsCheckBox.Value = true;
+
             % Create GradeMapColorsTab
             app.GradeMapColorsTab = uitab(app.TabGroup);
             app.GradeMapColorsTab.Title = 'Grade Map Colors';
@@ -4070,7 +4099,7 @@ classdef GLASS_AI_APP_dev < matlab.apps.AppBase
     methods (Access = public)
 
         % Construct app
-        function app = GLASS_AI_APP_dev
+        function app = GLASS_AI_APP
 
             runningApp = getRunningApp(app);
 
