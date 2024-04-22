@@ -2,7 +2,7 @@
 
 Preclinical mouse models of lung adenocarcinoma are invaluable for studying the molecular drivers of tumor formation, progression, and therapeutic resistance. Histological analyses of these preclinical models require significant investments of time and training to ensure accuracy and consistency. Analysis by a clinical pathologist is the gold standard in this approach but may be difficult to obtain due to the cost and availability of their services. As an alternative, we have developed a digital pathology tool to identify, segment, grade, and analyze tumors in mouse models of lung adenocarcinoma. 
 
-GLASS-AI was developed using [MATLAB v2021a](https://www.mathworks.com/products/matlab.html) using the [Image Processing v11.3](https://www.mathworks.com/products/image.html), [Deep Learning v14.2](https://www.mathworks.com/products/deep-learning.html), [Computer Vision 10.0](https://www.mathworks.com/products/computer-vision.html), and [Parallel Computing v7.4](https://www.mathworks.com/products/parallel-computing.html) Toolboxes. MATLAB is not free software, but it does allow us to compile our code to a standalone application/executable for distribution using the [MATLAB Compiler v8.2](https://www.mathworks.com/products/compiler.html). The code within these standalone applications is automatically obfuscated by MATLAB. The uncompiled code used to build these applications is provided in the `GLASS_AI_APP.m` file.
+GLASS-AI was developed using [MATLAB v2021a](https://www.mathworks.com/products/matlab.html) using the [Image Processing v11.3](https://www.mathworks.com/products/image.html), [Deep Learning v14.2](https://www.mathworks.com/products/deep-learning.html), [Computer Vision 10.0](https://www.mathworks.com/products/computer-vision.html), and [Parallel Computing v7.4](https://www.mathworks.com/products/parallel-computing.html) Toolboxes. MATLAB is not free software, but it does allow us to compile our code to a standalone application/executable for distribution using the [MATLAB Compiler v8.2](https://www.mathworks.com/products/compiler.html). The code within these standalone applications is automatically obfuscated by MATLAB. The uncompiled code used to build these applications is provided in the `GLASS_AI_APP_dev.mlapp` file and `GLASS_AI_APP.m`, the latter of which is readable on GitHub.
 
 GLASS-AI is based on the [ResNet-18 Network](https://www.mathworks.com/matlabcentral/fileexchange/68261-deep-learning-toolbox-model-for-resnet-18-network). The program accepts hematoxylin and eosin (H&E)-stained images or digital whole slide images and outputs tumor segmentation and grading maps with accompanying spreadsheets. We trained GLASS-AI using 33 H&E-stained whole slide images from 4 different mouse models of lung adenocarcinoma. Our whole slide images were captured using a Leica Aperio ScanScope AT2 Slide Scanner at 20x magnification with a 0.5022 microns/pixel resolution. These slides were divided among and graded by 3 expert raters to produce a training data set with 36,000 annotated image patches. 
 
@@ -27,7 +27,7 @@ A set of demo images is also available as a `.zip` file [here](https://moffitt.b
 *Installation time should be < 5 minutes.*
 
 ## Usage
-GLASS-AI accepts `SVS` or `TIF` files as input. For the best results, these images should be captured at 20x magnification with a 0.502 microns/pixel resolution, as that is what GLASS-AI was trained on.
+GLASS-AI accepts `SVS` or `TIF` files as input. For the best results, these images should be captured at 20x magnification with a 0.502 microns/pixel resolution, as that is what GLASS-AI was trained on. Using lower magnification or lower resolution images will likely produce unreliable results from GLASS-AI.
 
 The steps for running GLASS-AI are written in the graphic user interface (GUI), but they are as follows:
 
@@ -48,7 +48,8 @@ The steps for running GLASS-AI are written in the graphic user interface (GUI), 
     - The program will provide status updates at each step of the analysis to give you an idea of how far along it is.
     - GLASS-AI will attempt to use your GPU to perform analysis before resorting to using the CPU. Using a GPU is much faster but requires specific [Nvidia hardware and CUDA drivers](https://www.mathworks.com/help/parallel-computing/gpu-support-by-release.html).
       - GPU acceleration is not available on Mac OS.
-    - If something goes wrong during analysis, check the end of the log file that GLASS-AI creates in the output folder.  	
+    - If something goes wrong during analysis, check the end of the log file that GLASS-AI creates in the output folder.
+    - For troubleshooting advice, please reach out to us by (preferably) [opening a new issue on Github](https://github.com/jlockhar/GLASS-AI/issues/new) or contacting the authors via the correspondence email included in the [GLASS-AI manuscript](https://doi.org/10.1038/s41698-023-00419-3).
     
 ### Time saver options
 Using these options will greatly speed up the analysis, at the expense of some outputs and introducing minor artifacts during smoothing.
