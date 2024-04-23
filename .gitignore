@@ -3,3 +3,11 @@
 GLASS-AI_log*.txt
 *.prj
 /GLASS-AI_1
+/Stained Glass/*.mat
+/Stained Glass/*.svs
+/Stained Glass/*.tif
+/Stained Glass/*.csv
+/Stained Glass/*.xlsx
+/resnet18
+Stained GLASS/DeformableRegistrationUI.m
+/resnet18
