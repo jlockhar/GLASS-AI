@@ -11,3 +11,5 @@ GLASS-AI_log*.txt
 /resnet18
 Stained GLASS/DeformableRegistrationUI.m
 /resnet18
+/Stained GLASS/+deformableRegistrationUI
+.Rhistory
