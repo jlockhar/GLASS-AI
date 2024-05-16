@@ -8,6 +8,7 @@
 
 🤖 As an alternative, we developed a GLASS-AI to grade, segment, and analyze tumors in mouse models of lung adenocarcinoma. 
 
+---
 
 GLASS-AI was developed using [MATLAB](https://www.mathworks.com/products/matlab.html) using the [Image Processing v11.3](https://www.mathworks.com/products/image.html), [Deep Learning v14.2](https://www.mathworks.com/products/deep-learning.html), [Computer Vision 10.0](https://www.mathworks.com/products/computer-vision.html), and [Parallel Computing v7.4](https://www.mathworks.com/products/parallel-computing.html) Toolboxes. MATLAB is not free software, but it does allow us to compile our code to a standalone application/executable for distribution using the [MATLAB Compiler v8.2](https://www.mathworks.com/products/compiler.html). The code within these standalone applications is automatically obfuscated by MATLAB. The uncompiled code used to build these applications is provided in the `GLASS_AI_APP_dev.mlapp` file and `GLASS_AI_APP.m`, the latter of which is readable on GitHub.
 
@@ -23,6 +24,7 @@ The full training data set has been made available for public use on [Zenodo](do
 
 ## Installation
 Download and run the latest version of GLASS-AI for your operating system [here](https://moffitt.box.com/s/xii1rsfm93v7vnnokp2m8lx8vprojc1c). Installers are hosted by Moffitt Cancer Center as the files are too large to upload to GitHub.
+
    - **Mac users: Please make sure you use the correct installer based on your CPU (Intel or Silicon)**
    - Older versions of GLASS-AI can be found [here](https://moffitt.box.com/s/k0ewz5krbp7tb0arlke7iykoh5lgclwc).
    - During startup, GLASS-AI will check for new versions of the app here on GitHub and let you know if an update is available.
@@ -100,12 +102,12 @@ of the GLASS-AI app, you can try an older version (e.g., v1.0.1) using the `Low 
 * **GLASS-AI manual annotation editor** 
 	* GLASS-AI is not infallible, but the primary issues we've observed arise from unknown/untrained features in the analyzed images. This MATLAB app allows you to incorporate manual annotations created in [QuPath](https://qupath.github.io/) into the annotations produced by GLASS-AI (for example, including 'Grade 5' LUAD tumor areas or excluding non-lung tissue).
 * **Merge individual tumor files**
-	* These small scripts concatenate all of the files containing the individual tumors from each image into a single `.csv` file (mainly for feeding into old versions of the GLASS-AI report generator, the current version can do this automatically). The bash version is deprecated, as the current version of GLASS-AI outputs `.xlsx` files for each image, which can't be easily interacted with using a command line interface.
+	* These small scripts concatenate all of the files containing the individual tumors from each image into a single `.csv` file (mainly for feeding into old versions of the GLASS-AI report generator; the current version can do this automatically). The bash version is deprecated, as the current version of GLASS-AI outputs `.xlsx` files for each image, which can't be easily interacted with using a command line interface.
 
 ## License
-**This software is for research use only—not for use in diagnostic procedures.** 
+**This software is for research use only — not for use in diagnostic procedures.** 
 
-If you use this code for your research, please cite: Lockhart, J.H., Ackerman, H.D., Lee, K. et al. Grading of lung adenocarcinomas with simultaneous segmentation by artificial intelligence (GLASS-AI). npj Precis. Onc. 7, 68 (2023). [![DOI](https://zenodo.org/badge/DOI/10.1038/s41698-023-00419-3.svg)](https://doi.org/10.1038/s41698-023-00419-3)
+If you use this code for your research, please cite: Lockhart, J.H., Ackerman, H.D., Lee, K., *et al.* Grading of lung adenocarcinomas with simultaneous segmentation by artificial intelligence (GLASS-AI). *npj Precis. Onc.* 7, 68 (2023). [![DOI](https://zenodo.org/badge/DOI/10.1038/s41698-023-00419-3.svg)](https://doi.org/10.1038/s41698-023-00419-3)
 
 Figures reproduced from Lockhart, *et al.*, *npj Prec. Onc.* 2023 are used under Creative Commons Attribution 4.0 International License [![License: CC BY 4.0](https://licensebuttons.net/l/by/4.0/80x15.png)](https://creativecommons.org/licenses/by/4.0/)
 
