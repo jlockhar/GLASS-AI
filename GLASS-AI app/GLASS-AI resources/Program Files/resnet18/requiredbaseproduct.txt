@@ -1,3 +1,0 @@
-# Copyright 2020 Mathworks Inc.
-
-Deep Learning Toolbox
