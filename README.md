@@ -96,13 +96,15 @@ You should try running GLASS-AI on some of these files before using your own dat
 *\**16 GB of memory should be sufficient to analyze most whole slide images (like the example slide.svs). Slides with more than 1 section may require additional memory to process. If your computer does not have sufficient memory to run this version
 of the GLASS-AI app, you can try an older version (e.g., v1.0.1) using the `Low memory mode` option during runtime. However, this version of the GLASS-AI app is 2-3x faster than previous versions.*
 
-## Accessory files/scripts
-* **GLASS-AI report generator** 
+## Ancillary projects
+* [**GLASS-AI report generator**](https://github.com/jlockhar/GLASS-AI-ReportR)
 	* GLASS-AI can help analyze large sets of images, but you'll still need to interpret the results from the output tables and images. This R notebook that analyzes and graphs the results from GLASS-AI in many different ways (e.g., tumor counts, total tumor area, the proportion of lung area occupied by tumors, and intratumor heterogeneity estimates). This file can also be used to perform some basic statistical comparisons between groups that you define.
-* **GLASS-AI manual annotation editor** 
+* [**GLASS-AI manual annotation editor**](https://github.com/jlockhar/GLASS-AI-annotation-editor)
 	* GLASS-AI is not infallible, but the primary issues we've observed arise from unknown/untrained features in the analyzed images. This MATLAB app allows you to incorporate manual annotations created in [QuPath](https://qupath.github.io/) into the annotations produced by GLASS-AI (for example, including 'Grade 5' LUAD tumor areas or excluding non-lung tissue).
-* **Merge individual tumor files**
+* [**DEPRECATED-Merge individual tumor files**](https://github.com/jlockhar/GLASS-AI/tree/main/GLASS-AI%20resources/deprecated_merge%20tumor%20files)
 	* These small scripts concatenate all of the files containing the individual tumors from each image into a single `.csv` file (mainly for feeding into old versions of the GLASS-AI report generator; the current version can do this automatically). The bash version is deprecated, as the current version of GLASS-AI outputs `.xlsx` files for each image, which can't be easily interacted with using a command line interface.
+* [**Stained-GLASS-AI**](https://github.com/jlockhar/Stained-GLASS-AI)
+	* The high-resolution grading provided by GLASS-AI can empower molecular analyses of particular cell types, gene expression changes, or activation of signaling cascades marked by immunohistochemistry (IHC). By registering an IHC-stained slide with the one anlayzed by GLASS-AI, cell annotations can be projected onto the tumor grade maps output by GLASS-AI. In addition, a peritumoral analysis module is included to assess changes in the recruitment of cells to regions surrounding tumors.
 
 ## License
 **This software is for research use only — not for use in diagnostic procedures.** 
