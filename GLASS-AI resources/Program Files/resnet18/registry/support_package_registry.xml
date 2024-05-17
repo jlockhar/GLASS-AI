@@ -1,0 +1,23 @@
+<?xml version="1.0"?>
+<!--Copyright 2018-2020 The MathWorks, Inc. -->
+
+<RTTPackageRepository>
+    <SupportPackage
+        name="ResNet-18"
+        displayname="Deep Learning Toolbox Model for ResNet-18 Network"
+        fullname="Deep Learning Toolbox Model for ResNet-18 Network"
+        version="21.1.0"
+        basecode="RESNET18"
+        infotext="Deep Learning Toolbox Model for ResNet-18 Network"
+        platform="PCWIN,PCWIN64,GLNXA64,MACI64"
+        visible="1"
+        enable="1"
+        baseproduct="Deep Learning Toolbox"
+        url="http://www.mathworks.com"
+        downloadurl=""
+        licenseurl=""
+        supportcategory="software"
+        folder="resnet18">
+        <Path name="$(INSTALLDIR)/resnet18"></Path>
+    </SupportPackage>
+</RTTPackageRepository>
