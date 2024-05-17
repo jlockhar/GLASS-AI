@@ -75,14 +75,14 @@ You should try running GLASS-AI on some of these files before using your own dat
 
 > Image Name                                                               | Image Size  | PC1 Time | PC2 Time | Mac1 Time| Mac2 Time
 > ------------------------------------------------------------------------:|------------:|:--------:|:--------:|:--------:|:--------:
-> [10patch.tif](https://moffitt.box.com/s/e7mum83f2a4mkhbxzyxg1o8jfickcf6z)| 1112x1112µm | 00:00:10 | TO:BE:DN | 00:01:01 | TO:BE:DN
-> [20patch.tif](https://moffitt.box.com/s/r9phbnflb66gf3142uyukidmlgr3skub)| 2224x2224µm | 00:00:23 | TO:BE:DN | 00:01:07 | TO:BE:DN
-> [40patch.tif](https://moffitt.box.com/s/3n9k117l2x8c59iizcvt7bpck33b6o9r)| 4448x4448µm | 00:01:18 | TO:BE:DN | 00:04:08 | TO:BE:DN
-> [xxsmall.tif](https://moffitt.box.com/s/xxhxraizeser8tglut450n0f14288p28)| 1500x1500µm | 00:00:13 | TO:BE:DN | 00:00:37 | TO:BE:DN
-> [xsmall.tif](https://moffitt.box.com/s/ca9qqyxp4e2dd15349k9a5zjyckbbl4p) | 3480x3480µm | 00:00:50 | TO:BE:DN | 00:02:58 | TO:BE:DN
-> [small.tif](https://moffitt.box.com/s/59ff8wrdqnpoqfzutt54d72j0g1fkwyj)  | 6746x6746µm | 00:14:25 | TO:BE:DN | 00:06:21 | TO:BE:DN
-> [medium.tif](https://moffitt.box.com/s/o7p9v65vyuzh35tm1o7imir8p9ifk7sf) | 8987x9726µm | 00:01:42 | TO:BE:DN | 00:11:37 | TO:BE:DN
-> [slide.svs](https://moffitt.box.com/s/gx77h1d9zxa7so92lnczae20p66ktiez)  |25000x23813µm| 00:15:13 | TO:BE:DN | 00:54:21 | TO:BE:DN
+> [10patch.tif](https://moffitt.box.com/s/e7mum83f2a4mkhbxzyxg1o8jfickcf6z)| 1112x1112µm | 00:00:10 | 00:00:43 | 00:01:01 | 00:00:48
+> [20patch.tif](https://moffitt.box.com/s/r9phbnflb66gf3142uyukidmlgr3skub)| 2224x2224µm | 00:00:23 | 00:01:16 | 00:01:07 | 00:01:23
+> [40patch.tif](https://moffitt.box.com/s/3n9k117l2x8c59iizcvt7bpck33b6o9r)| 4448x4448µm | 00:01:18 | 00:04:02 | 00:04:08 | 00:04:22
+> [xxsmall.tif](https://moffitt.box.com/s/xxhxraizeser8tglut450n0f14288p28)| 1500x1500µm | 00:00:13 | 00:00:40 | 00:00:37 | 00:00:37
+> [xsmall.tif](https://moffitt.box.com/s/ca9qqyxp4e2dd15349k9a5zjyckbbl4p) | 3480x3480µm | 00:00:50 | 00:03:04 | 00:02:58 | 00:02:32
+> [small.tif](https://moffitt.box.com/s/59ff8wrdqnpoqfzutt54d72j0g1fkwyj)  | 6746x6746µm | 00:14:25 | 00:06:55 | 00:06:21 | 00:07:13
+> [medium.tif](https://moffitt.box.com/s/o7p9v65vyuzh35tm1o7imir8p9ifk7sf) | 8987x9726µm | 00:01:42 | 00:13:28 | 00:11:37 | 00:12:42
+> [slide.svs](https://moffitt.box.com/s/gx77h1d9zxa7so92lnczae20p66ktiez)  |25000x23813µm| 00:15:13 | 00:56:19 | 00:54:21 | 00:51:51
 
 > Computer Name           | Operating System  | CPU                          | GPU\*                              | Memory\*\*             | Storage Type
 > :----------------------:|:-----------------:|:----------------------------:|:----------------------------------:|:----------------------:|:------------:

@@ -543,7 +543,7 @@ classdef GLASS_AI_APP < matlab.apps.AppBase
                     %classifications were already gathered for smoothing
                     classificationOutputFilePath = fullfile(app.OUTPUT_PATH,strcat(app.currentFileName,'_classes.mat'));
                     %check for existing file and prompt to replace
-                    overwriteAll = false; %not yet defined be user, default to false
+                    overwriteAll = ""; %not yet defined be user, initialize as empty string
                     [classificationOutputFilePath, overwriteAll] = promptreplacexistingfile(app,classificationOutputFilePath,overwriteAll,".mat","_new.mat");
                     fprintf("%s - %s %s %s %s\n", string(datetime),"Saving classifications for",app.currentFileNameExt,"to",classificationOutputFilePath)
                     save(classificationOutputFilePath,'classifications', '-v7.3');
@@ -1166,7 +1166,7 @@ classdef GLASS_AI_APP < matlab.apps.AppBase
                     app.StatusLabel.Text = sprintf("%s\n%s",app.StatusLabel.Text,"This is a development/unpublished version of the GLASS-AI app.");
                 else
                     %fetch current version of the GLASS-AI app code from GitHub
-                    gitData = webread("https://raw.githubusercontent.com/jlockhar/GLASS-AI/main/GLASS_AI_APP.m");
+                    gitData = webread("https://raw.githubusercontent.com/jlockhar/GLASS-AI/main/GLASS-AI app/GLASS_AI_APP.m");
                     %extract version property and parse into major minor patch
                     versionPattern = regexpPattern("(?<=GLASSAI_APP_VERSION \= \')(v[0-9\.]+)(?=\')");
                     gitVersion = string(extract(gitData,versionPattern));
@@ -1255,7 +1255,7 @@ classdef GLASS_AI_APP < matlab.apps.AppBase
                 gcpInfo = gcp('nocreate');
                 isOurParPool = strcmpi(gcpInfo.Cluster.Type,'Local') && gcpInfo.NumWorkers == parPoolSize;
                 if ~isOurParPool
-                    fprintf("%s - %s %d ^s\n",string(datetime),"PARPOOL: Destroyed existing parpool with",gcpInfo.NumWorkers,"workers.")
+                    fprintf("%s - %s %d %s\n",string(datetime),"PARPOOL: Destroyed existing parpool with",gcpInfo.NumWorkers,"workers.")
                     delete(gcp('nocreate'))
                     parpool('Processes',parPoolSize);
                     fprintf("%s - %s %d %s\n",string(datetime),"PARPOOL: Created parpool with",parPoolSize,"workers.")
@@ -2308,11 +2308,11 @@ classdef GLASS_AI_APP < matlab.apps.AppBase
             logfunctioncall(app,"finish")
         end % End function: getcolormap
 
-        function [fullFilePath, overwriteAll] = promptreplacexistingfile(~,fullFilePath,overwriteAll,oldEnd,newEnd)
+        function [fullFilePath, applyToAllFiles] = promptreplacexistingfile(app,fullFilePath,applyToAllFiles,oldEnd,newEnd)
             arguments
-            ~
+            app
             fullFilePath {mustBeTextScalar}
-            overwriteAll logical = false
+            applyToAllFiles string = ""
             oldEnd {mustBeTextScalar} = ".tif"
             newEnd {mustBeTextScalar} = "_new.tif"
             end
@@ -2320,31 +2320,41 @@ classdef GLASS_AI_APP < matlab.apps.AppBase
             %check if file exists, if so prompt to
             %delete and replace
             if isfile(fullFilePath)
-                if overwriteAll
+                if applyToAllFiles == "overwrite"
                     replaceFile = 'Yes to all';
+                elseif applyToAllFiles == "keep"
+                    replaceFile = 'No to all';
                 else
                     fprintf("%s - %s %s\n", string(datetime),fullFilePath,"already exists. Prompting for overwrite permission.")
                     promptMessage = sprintf("%s already exits.\n Overwrite existing file?",fullFilePath);
-                    replaceFile = questdlg(promptMessage, "Replace file?", 'Yes to all','Yes', 'No', 'Yes');
+                    replaceFile = uiconfirm(app.GLASSAIUIFigure,promptMessage,"Replace file?", ...
+                        "Options",["Yes to all","Yes","No","No to all"], ...
+                        "DefaultOption",2);
+                      replaceFile = string(replaceFile);
                 end
 
-                if strcmpi(replaceFile, 'Yes')
-                    fprintf("%s - %s %s\n", string(datetime),"User requested overwrite of existing",fullFilePath)
-                    delete(fullFilePath)
-                    overwriteAll = false;
-                elseif strcmpi(replaceFile,'Yes to all')
-                    fprintf("%s - %s %s\n", string(datetime),"User allowed overwriting of all existing files, including",fullFilePath)
-                    delete(fullFilePath)
-                    overwriteAll = true;
-                else
-                    fprintf("%s - %s %s\n", string(datetime),"User declined overwrite of existing",fullFilePath)
-                    %append new to the end of the file name before .ext
-                    replace(fullFilePath,oldEnd,newEnd)
-                    fprintf("%s - %s %s\n", string(datetime),"Changed file name to",fullFilePath)
-                end
-            end
-
-        end % End function: promptreplaceexistingfile
+                switch replaceFile
+                    case "Yes"
+                        fprintf("%s - %s %s\n", string(datetime),"User requested overwrite of existing",fullFilePath)
+                        delete(fullFilePath)
+                        applyToAllFiles = "";
+                    case "Yes to all"
+                        fprintf("%s - %s %s\n", string(datetime),"User allowed overwriting of all existing files, including",fullFilePath)
+                        delete(fullFilePath)
+                        applyToAllFiles = "overwrite";
+                    case "No to all"
+                        fprintf("%s - %s %s\n", string(datetime),"User refused overwriting of all existing files, including",fullFilePath)
+                        fullFilePath = replace(fullFilePath,oldEnd,newEnd);
+                        fprintf("%s - %s %s\n", string(datetime),"Changed file name to",fullFilePath)
+                        applyToAllFiles = "keep";
+                    case "No"
+                        fprintf("%s - %s %s\n", string(datetime),"User declined overwrite of existing",fullFilePath)
+                        %append new to the end of the file name before .ext
+                        fullFilePath = replace(fullFilePath,oldEnd,newEnd);
+                        fprintf("%s - %s %s\n", string(datetime),"Changed file name to",fullFilePath)
+                end %switch replaceFile
+            end % if isfile(fullFilePath)
+        end % function promptreplaceexistingfile
 
         function  writetiff(app,Image,filePath)
             %write tiff files with metadata
