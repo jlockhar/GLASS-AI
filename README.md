@@ -26,6 +26,7 @@ The full training data set has been made available for public use on [Zenodo](do
 Download and run the latest version of GLASS-AI for your operating system [here](https://moffitt.box.com/s/xii1rsfm93v7vnnokp2m8lx8vprojc1c). Installers are hosted by Moffitt Cancer Center as the files are too large to upload to GitHub.
 
    - **Mac users: Please make sure you use the correct installer based on your CPU (Intel or Silicon)**
+   - **Mac users: If you get a 'GLASS-AI....app can't be opened' or 'GLASS-AI....app is damaged' error when trying to run the installer, it is being blocked by your security settings in  MacOS. If you can't enable installation from third-party developers, you can remove the quarantine flag that MacOS adds to downloaded apps by running `xattr -c <path/to/GLASS-AI_installer.app>` in Terminal before running the installer.**
    - Older versions of GLASS-AI can be found [here](https://moffitt.box.com/s/k0ewz5krbp7tb0arlke7iykoh5lgclwc).
    - During startup, GLASS-AI will check for new versions of the app here on GitHub and let you know if an update is available.
 
