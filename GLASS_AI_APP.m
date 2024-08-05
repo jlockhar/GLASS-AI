@@ -140,7 +140,7 @@ classdef GLASS_AI_APP < matlab.apps.AppBase
 
     properties (Access = private)
         % PROPERTIES %
-        GLASSAI_APP_VERSION = '2.0.0' % Version of GLASS-AI standalone app
+        GLASSAI_APP_VERSION = '2.0.1' % Version of GLASS-AI standalone app
         GLASS_AI_NET % Network object for machine learning model
         RESOURCE_DIR_PATH %store path to GLASS_AI_resources directory
 
@@ -1166,19 +1166,22 @@ classdef GLASS_AI_APP < matlab.apps.AppBase
                     app.StatusLabel.Text = sprintf("%s\n%s",app.StatusLabel.Text,"This is a development/unpublished version of the GLASS-AI app.");
                 else
                     %fetch current version of the GLASS-AI app code from GitHub
-                    gitData = webread("https://raw.githubusercontent.com/jlockhar/GLASS-AI/main/GLASS-AI app/GLASS_AI_APP.m");
+                    gitData = webread("https://raw.githubusercontent.com/jlockhar/GLASS-AI/main/GLASS_AI_APP.m");
                     %extract version property and parse into major minor patch
-                    versionPattern = regexpPattern("(?<=GLASSAI_APP_VERSION \= \')(v[0-9\.]+)(?=\')");
+                    versionPattern = regexpPattern("(?<=GLASSAI_APP_VERSION \= \')([0-9\.]+)(?=\')");
                     gitVersion = string(extract(gitData,versionPattern));
-                    fprintf("%s: %s","Current GLASS-AI app version on GitHub",gitVersion);
-                    gitVersionMajor = extract(gitVersion,regexpPattern("(?<=v)[0-9]+(?=\.)"));
-                    gitVersionMinor = extract(gitVersion,regexpPattern("(?<=v[0-9]+\.)[0-9]+(?=\.)"));
-                    gitVersionPatch = extract(gitVersion,regexpPattern("(?<=v[0-9]+\.[0-9]+\.)[0-9]+(?=$)"));
+
+                    fprintf("%s: %s\n","Current GLASS-AI app version on GitHub",gitVersion);
+                    app.VersionLabel.Tooltip = sprintf("%s: %s\n","Current GLASS-AI app version on GitHub",gitVersion);
+
+                    gitVersionMajor = extract(gitVersion,regexpPattern("(?<=^)[0-9]+(?=\.)"));
+                    gitVersionMinor = extract(gitVersion,regexpPattern("(?<=^[0-9]+\.)[0-9]+(?=\.)"));
+                    gitVersionPatch = extract(gitVersion,regexpPattern("(?<=^[0-9]+\.[0-9]+\.)[0-9]+(?=$)"));
 
                     %parse major minor patch version from this app
-                    appVersionMajor = extract(app.GLASSAI_APP_VERSION,regexpPattern("(?<=v)[0-9]+(?=\.)"));
-                    appVersionMinor = extract(app.GLASSAI_APP_VERSION,regexpPattern("(?<=v[0-9]+\.)[0-9]+(?=\.)"));
-                    appVersionPatch = extract(app.GLASSAI_APP_VERSION,regexpPattern("(?<=v[0-9]+\.[0-9]+\.)[0-9]+(?=$)"));
+                    appVersionMajor = extract(app.GLASSAI_APP_VERSION,regexpPattern("(?<=^)[0-9]+(?=\.)"));
+                    appVersionMinor = extract(app.GLASSAI_APP_VERSION,regexpPattern("(?<=^[0-9]+\.)[0-9]+(?=\.)"));
+                    appVersionPatch = extract(app.GLASSAI_APP_VERSION,regexpPattern("(?<=^[0-9]+\.[0-9]+\.)[0-9]+(?=$)"));
 
                     %compare version numbers
                     majorUpdateAvailable = str2double(appVersionMajor) < str2double(gitVersionMajor);
@@ -2479,7 +2482,7 @@ classdef GLASS_AI_APP < matlab.apps.AppBase
 
             %let window load
             app.StatusLabel.Text="Loading GLASS-AI neural network...";
-            app.VersionLabel.Text = app.GLASSAI_APP_VERSION;
+            app.VersionLabel.Text = sprintf("version %s",app.GLASSAI_APP_VERSION);
             fprintf("%s:\t%s\n","GLASS-AI version",app.GLASSAI_APP_VERSION)
             
             %locate 'GLASS-AI resources' folder
@@ -2520,15 +2523,8 @@ classdef GLASS_AI_APP < matlab.apps.AppBase
             app.StopAnalysisButton.Value = 0;
 
             try % load GLASS-AI from .mat file
-                if isdeployed && ispc
-                    %the GLASS_AI.mat file gets stored in a SEPARATE copy
-                    %of the "GLASS-AI resources" folder that is created in the
-                    %ctfroot temp file that doesn't have the "UI files"
-                    %folder. No idea why...
-                    pathToGLASSAI = fullfile(ctfroot,"GLASS-AI resources","Program Files","GLASS_AI.mat");
-                else
-                    pathToGLASSAI = fullfile(app.RESOURCE_DIR_PATH,"Program Files","GLASS_AI.mat");
-                end
+                pathToGLASSAI = fullfile(app.RESOURCE_DIR_PATH,"Program Files","GLASS_AI.mat");
+
                 
                 if isfile(pathToGLASSAI)
                     app.GLASS_AI_NET = load(pathToGLASSAI);
