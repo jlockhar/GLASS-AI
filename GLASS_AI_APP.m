@@ -110,9 +110,11 @@ classdef GLASS_AI_APP < matlab.apps.AppBase
         GradeMapScalingSlider           matlab.ui.control.Slider
         GradeMapScalingLabel            matlab.ui.control.Label
         LinksTab                        matlab.ui.container.Tab
-        Hyperlink_3                     matlab.ui.control.Hyperlink
-        Hyperlink_2                     matlab.ui.control.Hyperlink
-        Hyperlink                       matlab.ui.control.Hyperlink
+        GLASSAIAnnotationEditorGitHubLink  matlab.ui.control.Hyperlink
+        FloresLabLink                   matlab.ui.control.Hyperlink
+        GLASSAIManuscriptLink           matlab.ui.control.Hyperlink
+        GLASSAIGitHubLink               matlab.ui.control.Hyperlink
+        CopytobaseButton                matlab.ui.control.Button
         VersionLabel                    matlab.ui.control.Label
         CopyrightLabel                  matlab.ui.control.Label
         RUOLabel                        matlab.ui.control.Label
@@ -140,9 +142,10 @@ classdef GLASS_AI_APP < matlab.apps.AppBase
 
     properties (Access = private)
         % PROPERTIES %
-        GLASSAI_APP_VERSION = '2.0.1' % Version of GLASS-AI standalone app
+        GLASSAI_APP_VERSION = '2.0.2' % Version of GLASS-AI standalone app
         GLASS_AI_NET % Network object for machine learning model
         RESOURCE_DIR_PATH %store path to GLASS_AI_resources directory
+        START_DIR
 
         % RUNTIME_VARS %
         LAST_SELECTED_DIR % Path to last selected directory
@@ -164,6 +167,7 @@ classdef GLASS_AI_APP < matlab.apps.AppBase
         REMOVE_PURE_COLORS % Remove pure colors during stain normalization
         OUTPUT_IMAGE_PREVIEW % True = make preview figure of output images
         OUTPUT_GRADE_IMAGE_SCALE % scaling applied to grade map output image
+        MAKE_NORMALIZED_IMAGE % Save normalized H&E image to file
         MAKE_SEGMENTATION_IMAGE % Generate labeled tumor segmentation image
         OUTPUT_SEGMENTATION_IMAGE_SCALE % scaling applied to segmentation output image
         OUTPUT_NORMALIZED_IMAGE_SCALE % scaling applied to stain normalized output image
@@ -206,6 +210,7 @@ classdef GLASS_AI_APP < matlab.apps.AppBase
         logFileName % name of log file
         logFilePath % location of log file
         ErrorAlertAlreadyCreated = false % Flag to store if an error has occured in a defined try block
+        
     end % End Properties
 
     methods (Access = private)
@@ -266,6 +271,7 @@ classdef GLASS_AI_APP < matlab.apps.AppBase
                         %mark the image currently being processed in the FileTable
                         processingstyle = uistyle("Icon",fullfile(app.RESOURCE_DIR_PATH,"UI files","processing.svg"));
                         addStyle(app.FileTable,processingstyle,"cell",[app.iImage 3])
+                        scroll(app.FileTable,"row",app.iImage)
 
                         runglassai(app,net)
 
@@ -422,7 +428,6 @@ classdef GLASS_AI_APP < matlab.apps.AppBase
                     'UseParallel',true);
                 fprintf("%s - %s %s\n",string(datetime),"Created blockLocationSet using tissue mask for", app.currentFileNameExt)
 
-
                 %% normalize staining
                 if app.NORMALIZE_STAINS
                     statusupdate(app,"Estimating stain concentration");
@@ -543,7 +548,7 @@ classdef GLASS_AI_APP < matlab.apps.AppBase
                     %classifications were already gathered for smoothing
                     classificationOutputFilePath = fullfile(app.OUTPUT_PATH,strcat(app.currentFileName,'_classes.mat'));
                     %check for existing file and prompt to replace
-                    overwriteAll = ""; %not yet defined be user, initialize as empty string
+                    overwriteAll = ""; %not yet defined by user, initialize as empty string
                     [classificationOutputFilePath, overwriteAll] = promptreplacexistingfile(app,classificationOutputFilePath,overwriteAll,".mat","_new.mat");
                     fprintf("%s - %s %s %s %s\n", string(datetime),"Saving classifications for",app.currentFileNameExt,"to",classificationOutputFilePath)
                     save(classificationOutputFilePath,'classifications', '-v7.3');
@@ -2484,26 +2489,19 @@ classdef GLASS_AI_APP < matlab.apps.AppBase
             app.StatusLabel.Text="Loading GLASS-AI neural network...";
             app.VersionLabel.Text = sprintf("version %s",app.GLASSAI_APP_VERSION);
             fprintf("%s:\t%s\n","GLASS-AI version",app.GLASSAI_APP_VERSION)
+
+            % locate where the application is launched from
+            %- use mfilename("fullpath") to get location of launched file
+            %- strip off mfilename at the end of the char vector to get
+            %- folder that should contain the mlapp file and the
+            %- 'Resources' directory.
+            %-- This approach should work regardless of platform and
+            %-- deployment
+            mlapp_location = replace(mfilename('fullpath'),[filesep mfilename()]+textBoundary('end'),'');
+
+            % set path to expected 'Resources' folder location
+            app.RESOURCE_DIR_PATH = fullfile(mlapp_location,"Resources");
             
-            %locate 'GLASS-AI resources' folder
-            if isdeployed 
-                if ismac
-                    % default ctf is within app contents, keep only path
-                    % before GLASS-AI.app
-                    app.RESOURCE_DIR_PATH = fullfile(extractBefore(ctfroot,"GLASS_AI.app"),"GLASS-AI resources");
-                elseif ispc
-                    %ctfroot is created in a temp folder. "Files required 
-                    %for your application to run" are copied into a temp
-                    %directory with the name of the application 
-                    % (i.e., GLASS_AI) when it is launched.
-                    app.RESOURCE_DIR_PATH = fullfile(ctfroot,"GLASS_AI","GLASS-AI resources");
-                end
-            else
-                app.RESOURCE_DIR_PATH = fullfile(pwd,"GLASS-AI resources");
-            end
-
-            fprintf("%s:\t%s\n","resource directory", string(app.RESOURCE_DIR_PATH));
-
             %validate RESOURCE_DIR_PATH by changing UI images
             %change window icon to GLASS-AI
             app.GLASSAIUIFigure.Icon = fullfile(app.RESOURCE_DIR_PATH,"UI Files","icon_48.png");
@@ -2511,6 +2509,20 @@ classdef GLASS_AI_APP < matlab.apps.AppBase
             app.MoffittLogo.ImageSource = fullfile(app.RESOURCE_DIR_PATH,"UI Files","moffitt.png");
             %add GLASS-AI logo to UI
             app.GLASSAILogo.ImageSource = fullfile(app.RESOURCE_DIR_PATH,"UI Files","GLASS-AI icon.png");
+            
+            %get starting directory to recall during development
+            if not(isdeployed)
+                % change directory to where .mlapp or .m file is located
+                cd(mlapp_location)
+                app.START_DIR = mlapp_location;
+                %reveal copy to base button for debugging
+                app.CopytobaseButton.Visible = 'on';
+                app.CopytobaseButton.Enable = 'on';
+                % show path to common folders
+                uialert(app.GLASSAIUIFigure,sprintf("ctfroot: %s\npwd: %s\nmfilename: %s\n",ctfroot,pwd,mlapp_location),"Current File Paths","Icon","info")
+            end % if not(isdeployed)
+
+            fprintf("%s:\t%s\n","resource directory", string(app.RESOURCE_DIR_PATH));
 
             %make file table visible but not interactable
             app.FileTable.Enable = 'inactive';
@@ -2637,8 +2649,6 @@ classdef GLASS_AI_APP < matlab.apps.AppBase
                 filesize = dir(app.SELECTED_PATHS{n}).bytes/(1024^2);
                 app.FileTable.Data{n,2} = char(sprintf("%.2f MB",filesize));
                 app.FileTable.Data{n,3} = '';
-                fprintf("%s - %s:\t%s\t%.2f MB\n",string(datetime),"File selected", app.SELECTED_PATHS{n}, filesize);
-
             end
 
             waitstyle = uistyle("Icon",fullfile(app.RESOURCE_DIR_PATH,"UI files", "waiting.svg"));
@@ -2678,7 +2688,7 @@ classdef GLASS_AI_APP < matlab.apps.AppBase
             % Refresh figure to update OutputFolderLocationLabel
             drawnow
 
-            fprintf("%s - %s:\t%s\n",string(datetime),"Output directory selected:", app.OUTPUT_PATH);
+            
             % Ready check
             if isfolder(app.OUTPUT_PATH) % Green light if output folder exists
                 app.OutputFolderLamp.Color = [0,1,0];
@@ -2729,9 +2739,10 @@ classdef GLASS_AI_APP < matlab.apps.AppBase
 
             for n = 1:length(app.SELECTED_FILES) % Get system file paths for selected files
                 filesize = dir(app.SELECTED_PATHS{n}).bytes/(1024^2);
-                fprintf("%s - %s:\t%s\t%.2f MB\n",string(datetime),"File selected", app.SELECTED_PATHS{n}, filesize);
+                fprintf("%s:\t%s\t%.2f MB\n","File selected", app.SELECTED_PATHS{n}, filesize);
             end
 
+            fprintf("%s:\t%s\n","Output directory selected", app.OUTPUT_PATH);fprintf("%s - %s:\t%s\n",string(datetime),"Output directory selected", app.OUTPUT_PATH);
             % collect and log analysis run parameters
             fprintf("%s\n","%%%%%%% Run parameters %%%%%%%")
 
@@ -2785,7 +2796,7 @@ classdef GLASS_AI_APP < matlab.apps.AppBase
             fprintf("%s:\t%.3f\t%.3f\t%.3f\n","Stain normalization hematoxylin", app.HemRedInput.Value,app.HemGreenInput.Value, app.HemBlueInput.Value);
             fprintf("%s:\t%.3f\t%.3f\t%.3f\n","Stain normalization eosin", app.EosRedInput.Value,app.EosGreenInput.Value, app.EosBlueInput.Value);
             app.REMOVE_PURE_COLORS = app.RemovepurecolorpixelsCheckBox.Value;
-            fprintf("%s:\t%.3f\n","Remove pure colors during normalization", app.REMOVE_PURE_COLORS);
+            fprintf("%s:\t%s\n","Remove pure colors during normalization", string(app.REMOVE_PURE_COLORS));
 
             % Grade Map Colors tab
             app.NORMAL_ALVEOLI_COLOR = [app.NormalAlveoliColorEditField_R.Value, app.NormalAlveoliColorEditField_G.Value, app.NormalAlveoliColorEditField_B.Value];
@@ -2808,18 +2819,20 @@ classdef GLASS_AI_APP < matlab.apps.AppBase
             %Output Image Scaling tab
             app.OUTPUT_GRADE_IMAGE_SCALE = app.GradeMapScalingSlider.Value/100;
             fprintf("%s:\t%.3f\n","Grade map output scale", app.OUTPUT_GRADE_IMAGE_SCALE);
-            app.MAKE_SEGMENTATION_IMAGE = [app.SegmentationImageCheckBox.Value];
-            fprintf("%s:\t%.3f\n","Make segmentation image", app.MAKE_SEGMENTATION_IMAGE);
+            app.MAKE_SEGMENTATION_IMAGE = app.SegmentationImageCheckBox.Value;
+            fprintf("%s:\t%s\n","Make segmentation image", string(app.MAKE_SEGMENTATION_IMAGE));
             app.OUTPUT_SEGMENTATION_IMAGE_SCALE = app.SegmentationScalingSlider.Value/100;
             fprintf("%s:\t%.3f\n","Segmentation image output scale", app.OUTPUT_SEGMENTATION_IMAGE_SCALE);
+            app.MAKE_NORMALIZED_IMAGE = app.NormalizedImageOutputCheckBox.Value;
+            fprintf("%s:\t%s\n","Make normalized image", string(app.MAKE_NORMALIZED_IMAGE));
             app.OUTPUT_NORMALIZED_IMAGE_SCALE = app.StainNormalizedImageScalingSlider.Value/100;
             fprintf("%s:\t%.3f\n","Stain normalize image output scale", app.OUTPUT_NORMALIZED_IMAGE_SCALE);
             app.MAKE_CONFIDENCE_MAP = [app.ConfidenceMapCheckBox.Value];
-            fprintf("%s:\t%.3f\n","Make confidence map", app.MAKE_CONFIDENCE_MAP);
+            fprintf("%s:\t%s\n","Make confidence map", string(app.MAKE_CONFIDENCE_MAP));
             app.OUTPUT_CONFIDENCE_MAP_SCALE = app.ConfidenceMapScalingSlider.Value/100;
             fprintf("%s:\t%.3f\n","Confidence map output scale", app.OUTPUT_CONFIDENCE_MAP_SCALE);
             app.CONFIDENCE_MAP_COLOR = app.ConfidenceMapPaletteDropDown.Value;
-            fprintf("%s:\t%.3f\n","Confidence map output color map", app.CONFIDENCE_MAP_COLOR);
+            fprintf("%s:\t%s\n","Confidence map output color map", app.CONFIDENCE_MAP_COLOR);
             fprintf("%s\n","%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%")
 
             % Begin analysis
@@ -2945,10 +2958,24 @@ classdef GLASS_AI_APP < matlab.apps.AppBase
                 close(appFigures)
             end
 
+            % return to invoking directory in dev environment on app close
+            if not(isdeployed)
+                cd(app.START_DIR)
+            end
+
             fprintf("%s - %s\n",string(datetime),"Application terminated.");
             echo off all;
             diary("off");
             delete(app)
+        end
+
+        % Button pushed function: CopytobaseButton
+        function CopytobaseButtonPushed(app, event)
+            % copy app to base workspace for debugging
+            %- closing app window destroys data in the base variable too
+            if not(isdeployed)
+                assignin("base","app",app)
+            end
         end
     end
 
@@ -3873,22 +3900,36 @@ classdef GLASS_AI_APP < matlab.apps.AppBase
             app.LinksTab = uitab(app.TabGroup);
             app.LinksTab.Title = 'Links';
 
-            % Create Hyperlink
-            app.Hyperlink = uihyperlink(app.LinksTab);
-            app.Hyperlink.URL = 'https://github.com/jlockhar/GLASS-AI';
-            app.Hyperlink.Position = [11 174 170 22];
-            app.Hyperlink.Text = 'GLASS-AI GitHub Repository';
+            % Create CopytobaseButton
+            app.CopytobaseButton = uibutton(app.LinksTab, 'push');
+            app.CopytobaseButton.ButtonPushedFcn = createCallbackFcn(app, @CopytobaseButtonPushed, true);
+            app.CopytobaseButton.Enable = 'off';
+            app.CopytobaseButton.Visible = 'off';
+            app.CopytobaseButton.Position = [14 6 100 23];
+            app.CopytobaseButton.Text = 'Copy to base';
 
-            % Create Hyperlink_2
-            app.Hyperlink_2 = uihyperlink(app.LinksTab);
-            app.Hyperlink_2.Position = [11 196 130 22];
-            app.Hyperlink_2.Text = 'GLASS-AI Manuscript';
+            % Create GLASSAIGitHubLink
+            app.GLASSAIGitHubLink = uihyperlink(app.LinksTab);
+            app.GLASSAIGitHubLink.URL = 'https://github.com/jlockhar/GLASS-AI';
+            app.GLASSAIGitHubLink.Position = [12 172 170 22];
+            app.GLASSAIGitHubLink.Text = 'GLASS-AI GitHub Repository';
 
-            % Create Hyperlink_3
-            app.Hyperlink_3 = uihyperlink(app.LinksTab);
-            app.Hyperlink_3.URL = 'https://www.florescancerlab.org/';
-            app.Hyperlink_3.Position = [11 152 143 22];
-            app.Hyperlink_3.Text = 'The Flores Lab @ Moffitt';
+            % Create GLASSAIManuscriptLink
+            app.GLASSAIManuscriptLink = uihyperlink(app.LinksTab);
+            app.GLASSAIManuscriptLink.Position = [12 195 130 22];
+            app.GLASSAIManuscriptLink.Text = 'GLASS-AI Manuscript';
+
+            % Create FloresLabLink
+            app.FloresLabLink = uihyperlink(app.LinksTab);
+            app.FloresLabLink.URL = 'https://www.florescancerlab.org/';
+            app.FloresLabLink.Position = [13 128 143 22];
+            app.FloresLabLink.Text = 'The Flores Lab @ Moffitt';
+
+            % Create GLASSAIAnnotationEditorGitHubLink
+            app.GLASSAIAnnotationEditorGitHubLink = uihyperlink(app.LinksTab);
+            app.GLASSAIAnnotationEditorGitHubLink.URL = 'https://github.com/jlockhar/GLASS-AI-annotation-editor';
+            app.GLASSAIAnnotationEditorGitHubLink.Position = [12 150 277 22];
+            app.GLASSAIAnnotationEditorGitHubLink.Text = 'GLASS-AI Annotation Editor GitHub Repository';
 
             % Create MoffittLogo
             app.MoffittLogo = uiimage(app.GLASSAIUIFigure);
