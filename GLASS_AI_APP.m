@@ -142,7 +142,7 @@ classdef GLASS_AI_APP < matlab.apps.AppBase
 
     properties (Access = private)
         % PROPERTIES %
-        GLASSAI_APP_VERSION = '2.0.2' % Version of GLASS-AI standalone app
+        GLASSAI_APP_VERSION = '2.0.3' % Version of GLASS-AI standalone app
         GLASS_AI_NET % Network object for machine learning model
         RESOURCE_DIR_PATH %store path to GLASS_AI_resources directory
         START_DIR
@@ -946,13 +946,13 @@ classdef GLASS_AI_APP < matlab.apps.AppBase
                             %gathered to a different variable name.
                             normalizedImageFilePath = fullfile(app.OUTPUT_PATH,strcat(app.currentFileName+"_normalized.tif"));    
                             adapter = images.blocked.TIFF;
-                            adapter.Compression = Tiff.Compression.JPEG;
+                            adapter.Compression = Tiff.Compression.LZW;
                             %Write function can't overwrite by default.
                             %prompt user to replace existing file or rename
                             %current output
                             [normalizedImageFilePath, overwriteAll] = promptreplacexistingfile(app,normalizedImageFilePath,overwriteAll);
                             fprintf("%s - %s %s %s %s\n", string(datetime),"Saving stain normalized image for", app.currentFileNameExt, "to",normalizedImageFilePath)
-                            write(normalizedImage,normalizedImageFilePath,'Adapter',adapter);
+                            write(normalizedImage,normalizedImageFilePath,'Adapter',adapter,'BlockSize',16);
                             fprintf("%s - %s %s %s %s\n", string(datetime),"Finished saving stain normalized image for", app.currentFileNameExt, "to",normalizedImageFilePath)
                         catch ME
                             % alert user that an error occured if not already done
@@ -2377,7 +2377,7 @@ classdef GLASS_AI_APP < matlab.apps.AppBase
             tags.SamplesPerPixel     = size(Image,3);
             tags.TileWidth           = 128;
             tags.TileLength          = 128;
-            tags.Compression         = Tiff.Compression.JPEG;
+            tags.Compression         = Tiff.Compression.LZW;
             tags.PlanarConfiguration = Tiff.PlanarConfiguration.Chunky;
             tags.Software            = 'MATLAB/GLASS-AI';
 
