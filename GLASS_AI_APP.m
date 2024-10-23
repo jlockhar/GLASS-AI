@@ -142,7 +142,7 @@ classdef GLASS_AI_APP < matlab.apps.AppBase
 
     properties (Access = private)
         % PROPERTIES %
-        GLASSAI_APP_VERSION = '2.0.2' % Version of GLASS-AI standalone app
+        GLASSAI_APP_VERSION = '2.0.3' % Version of GLASS-AI standalone app
         GLASS_AI_NET % Network object for machine learning model
         RESOURCE_DIR_PATH %store path to GLASS_AI_resources directory
         START_DIR
@@ -260,7 +260,8 @@ classdef GLASS_AI_APP < matlab.apps.AppBase
                         %- do this for each image because pool may be destroyed
                         %- if not used for an extended period of time
                         app.StatusLabel.Text = "Starting parallel processing pool...";
-                        startparpool(app);
+                        parpool('Processes');
+                        fprintf("%s - %s %d %s\n",string(datetime),"PARPOOL: Created parpool with",gcp('nocreate').NumWorkers,"workers.")
 
                         %% get image file info
                         app.currentFilePath = app.SELECTED_PATHS{currentImage};
@@ -946,13 +947,13 @@ classdef GLASS_AI_APP < matlab.apps.AppBase
                             %gathered to a different variable name.
                             normalizedImageFilePath = fullfile(app.OUTPUT_PATH,strcat(app.currentFileName+"_normalized.tif"));    
                             adapter = images.blocked.TIFF;
-                            adapter.Compression = Tiff.Compression.JPEG;
+                            adapter.Compression = Tiff.Compression.LZW;
                             %Write function can't overwrite by default.
                             %prompt user to replace existing file or rename
                             %current output
                             [normalizedImageFilePath, overwriteAll] = promptreplacexistingfile(app,normalizedImageFilePath,overwriteAll);
                             fprintf("%s - %s %s %s %s\n", string(datetime),"Saving stain normalized image for", app.currentFileNameExt, "to",normalizedImageFilePath)
-                            write(normalizedImage,normalizedImageFilePath,'Adapter',adapter);
+                            write(normalizedImage,normalizedImageFilePath,'Adapter',adapter,'BlockSize',16);
                             fprintf("%s - %s %s %s %s\n", string(datetime),"Finished saving stain normalized image for", app.currentFileNameExt, "to",normalizedImageFilePath)
                         catch ME
                             % alert user that an error occured if not already done
@@ -1245,32 +1246,6 @@ classdef GLASS_AI_APP < matlab.apps.AppBase
             end
 
         end % End function: runcheck
-
-        function startparpool(app)
-            % start parellel processing pool for available CPU logical
-            % cores
-            nCPUCores = feature('numcores');
-            parPoolSize = nCPUCores;
-
-            % start parallel processing pool if it doesn't exist
-            if isempty(gcp('nocreate'))
-                fprintf("%s - %s %d %s\n",string(datetime),"PARPOOL: Starting parpool with",parPoolSize,"workers.")
-                parpool('Processes',parPoolSize);
-                fprintf("%s - %s %d %s\n",string(datetime),"PARPOOL: Created parpool with",parPoolSize,"workers.")
-
-            else % processing pool does exist
-                % release if local pool and not expected number of workers
-                gcpInfo = gcp('nocreate');
-                isOurParPool = strcmpi(gcpInfo.Cluster.Type,'Local') && gcpInfo.NumWorkers == parPoolSize;
-                if ~isOurParPool
-                    fprintf("%s - %s %d %s\n",string(datetime),"PARPOOL: Destroyed existing parpool with",gcpInfo.NumWorkers,"workers.")
-                    delete(gcp('nocreate'))
-                    parpool('Processes',parPoolSize);
-                    fprintf("%s - %s %d %s\n",string(datetime),"PARPOOL: Created parpool with",parPoolSize,"workers.")
-                end % End IF: ~isOurParPool
-                %leave existing, safe pool running
-            end % End IF: isempty(gcp('nocreate'))
-        end % End function: startparpool
 
         function statusupdate(app,statusMessage)
             % Provide status updates to users based on analysis step and images
@@ -2377,7 +2352,7 @@ classdef GLASS_AI_APP < matlab.apps.AppBase
             tags.SamplesPerPixel     = size(Image,3);
             tags.TileWidth           = 128;
             tags.TileLength          = 128;
-            tags.Compression         = Tiff.Compression.JPEG;
+            tags.Compression         = Tiff.Compression.LZW;
             tags.PlanarConfiguration = Tiff.PlanarConfiguration.Chunky;
             tags.Software            = 'MATLAB/GLASS-AI';
 
@@ -3955,6 +3930,16 @@ classdef GLASS_AI_APP < matlab.apps.AppBase
             app.UpdateAvailableButton.Tooltip = {'Click to get the latest version of the GLASS-AI app!'};
             app.UpdateAvailableButton.Position = [606 537 115 23];
             app.UpdateAvailableButton.Text = 'Update Available!';
+
+            % Create StopButton
+            app.StopButton = uibutton(app.GLASSAIUIFigure, 'push');
+            app.StopButton.ButtonPushedFcn = createCallbackFcn(app, @StopButtonPushed, true);
+            app.StopButton.BackgroundColor = [0.949 0.4941 0.4941];
+            app.StopButton.Enable = 'off';
+            app.StopButton.Visible = 'off';
+            app.StopButton.Tooltip = {'Interrupts GLASS-AI analysis at the next possible step. Some steps like loading large images may take several minutes to complete before the analysis can be stopped. '};
+            app.StopButton.Position = [589 6 100 23];
+            app.StopButton.Text = 'Stop analysis';
 
             % Show the figure after all components are created
             app.GLASSAIUIFigure.Visible = 'on';
