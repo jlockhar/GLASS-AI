@@ -3,7 +3,6 @@ classdef GLASS_AI_APP < matlab.apps.AppBase
     % Properties that correspond to app components
     properties (Access = public)
         GLASSAIUIFigure                 matlab.ui.Figure
-        StopButton                      matlab.ui.control.Button
         UpdateAvailableButton           matlab.ui.control.Button
         GLASSAILogo                     matlab.ui.control.Image
         StopAnalysisButton              matlab.ui.control.StateButton
