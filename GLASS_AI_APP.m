@@ -3,7 +3,6 @@ classdef GLASS_AI_APP < matlab.apps.AppBase
     % Properties that correspond to app components
     properties (Access = public)
         GLASSAIUIFigure                 matlab.ui.Figure
-        StopButton                      matlab.ui.control.Button
         UpdateAvailableButton           matlab.ui.control.Button
         GLASSAILogo                     matlab.ui.control.Image
         StopAnalysisButton              matlab.ui.control.StateButton
@@ -257,11 +256,16 @@ classdef GLASS_AI_APP < matlab.apps.AppBase
                             fprintf("%s - %s\n",string(datetime),"ANALYSIS STOP REQUESTED BY USER. Breaking from FOR loop over input image files in main().")
                             break %escape from FOR loop over input images
                         end
-                        % start parallel processing pool if possible/allowed
+                        % start parallel processing pool if
+                        % possible/allowed and one does not already exist
                         %- do this for each image because pool may be destroyed
                         %- if not used for an extended period of time
+                        p = gcp('nocreate'); 
+                        if isempty(p)
+                            parpool('Processes');
+                        end
                         app.StatusLabel.Text = "Starting parallel processing pool...";
-                        parpool('Processes');
+                        
                         fprintf("%s - %s %d %s\n",string(datetime),"PARPOOL: Created parpool with",gcp('nocreate').NumWorkers,"workers.")
 
                         %% get image file info
@@ -3931,16 +3935,6 @@ classdef GLASS_AI_APP < matlab.apps.AppBase
             app.UpdateAvailableButton.Tooltip = {'Click to get the latest version of the GLASS-AI app!'};
             app.UpdateAvailableButton.Position = [606 537 115 23];
             app.UpdateAvailableButton.Text = 'Update Available!';
-
-            % Create StopButton
-            app.StopButton = uibutton(app.GLASSAIUIFigure, 'push');
-            app.StopButton.ButtonPushedFcn = createCallbackFcn(app, @StopButtonPushed, true);
-            app.StopButton.BackgroundColor = [0.949 0.4941 0.4941];
-            app.StopButton.Enable = 'off';
-            app.StopButton.Visible = 'off';
-            app.StopButton.Tooltip = {'Interrupts GLASS-AI analysis at the next possible step. Some steps like loading large images may take several minutes to complete before the analysis can be stopped. '};
-            app.StopButton.Position = [589 6 100 23];
-            app.StopButton.Text = 'Stop analysis';
 
             % Show the figure after all components are created
             app.GLASSAIUIFigure.Visible = 'on';
