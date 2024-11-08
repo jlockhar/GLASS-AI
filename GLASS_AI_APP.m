@@ -461,11 +461,12 @@ classdef GLASS_AI_APP < matlab.apps.AppBase
                     Io = app.NORMALIZE_IO;
                     HEREF = app.NORMALIZE_HEREF;
                     fprintf("%s - %s %s\n",string(datetime),"Applying stain normalization to", app.currentFileNameExt)
-                    normalizedImage = apply(wholeImage,@(bim) applystainnormalization(app,bim.Data,stainMatrix,stainConc,Io,HEREF),...
+                    normalizedImageTempFile = fullfile(app.OUTPUT_PATH,'TempFolder','normalized_image');
+                    normalizedImage = apply(wholeImage,@(bim) applystainnormalization(bim.Data,stainMatrix,stainConc,Io,HEREF),...
                         'Adapter',images.blocked.PNGBlocks,...
                         'Level',imageIndex,...
                         'UseParallel',true,...
-                        'OutputLocation',fullfile(app.OUTPUT_PATH,'TempFolder','normalized_image'));
+                        'OutputLocation',normalizedImageTempFile);
                     fprintf("%s - %s %s\n",string(datetime),"Finished applying stain normalization to", app.currentFileNameExt)
                 end
 
@@ -1553,28 +1554,7 @@ classdef GLASS_AI_APP < matlab.apps.AppBase
             stainConc = prctile(OD, 99, 2);
         end
 
-        function normalizedImage = applystainnormalization(~,inputImage,stainMatrix,stainConc,Io,HEREF)
-            % reference maximum stain concentrations for H&E
-            referenceStainConc = [1.9705 ; 1.0308];
-
-            [height, width, channels] = size(inputImage);
-            %calculate OD
-            normalizedImage = reshape(double(inputImage), [], 3);
-            normalizedImage = -log((double(normalizedImage)+1)/Io);
-
-            % determine concentrations of the individual stains
-            normalizedImage = normalizedImage';
-            normalizedImage = stainMatrix \ normalizedImage;
-
-            % normalize stain concentrations
-            normalizedImage = bsxfun(@rdivide, normalizedImage, stainConc);
-            normalizedImage = bsxfun(@times, normalizedImage, referenceStainConc);
-
-            % recreate the image using reference mixing matrix
-            normalizedImage = Io*exp(-HEREF * normalizedImage);
-            normalizedImage = reshape(normalizedImage', height, width, channels);
-            normalizedImage = uint8(normalizedImage);
-        end
+        
 
         function smoothedClasses = smoothclasses(app,inputClasses)
             % Applies a smoothing kernel across tumor classes to
@@ -2478,10 +2458,11 @@ classdef GLASS_AI_APP < matlab.apps.AppBase
             %-- This approach should work regardless of platform and
             %-- deployment
             mlapp_location = replace(mfilename('fullpath'),[filesep mfilename()]+textBoundary('end'),'');
-
+            
             % set path to expected 'Resources' folder location
             app.RESOURCE_DIR_PATH = fullfile(mlapp_location,"Resources");
-            
+            % add Resources folder to Matlab path
+            addpath(genpath(app.RESOURCE_DIR_PATH));
             %validate RESOURCE_DIR_PATH by changing UI images
             %change window icon to GLASS-AI
             app.GLASSAIUIFigure.Icon = fullfile(app.RESOURCE_DIR_PATH,"UI Files","icon_48.png");
