@@ -48,7 +48,7 @@ GLASS-AI accepts `SVS`, `TIF`, `PNG`, or `JPEG` files as input. For the best res
 The steps for running GLASS-AI are indicated in the graphic user interface (GUI), but they are as follows:
 
 1. Click the `Select Images` button to select the images you want to analyze.
-	- The software will filter for `.svs`, `.tif`/`.tiff`, `.png`, and `.jpg`/`.jpeg` files while broswing.
+	- The software will filter for `.svs`, `.tif`/`.tiff`, `.png`, and `.jpg`/`.jpeg` files while browsing.
 	- It is highly recommended that you move the files you plan to analyze with GLASS-AI to a local folder on your computer (i.e., not a network drive) to minimize I/O bottlenecks.
 2. Click the `Output folder` button to navigate to the folder where you would like the output images and spreadsheets to be deposited.
 	- A `TempFolder` will also be created here during the analysis run and deleted after the analysis is completed. 
@@ -56,12 +56,12 @@ The steps for running GLASS-AI are indicated in the graphic user interface (GUI)
 3. Change any analysis options you wish to adjust.
    	- Tooltips for each option are shown if you hover your mouse over them.
    	- The results reported in [Lockhart *et al.*, *npj Prec Onc*, 2023](https://doi.org/10.1038/s41698-023-00419-3) were generated using the default values.
-   	- By default GLASS-AI will not generate the Tumor Segmentation Map or Prediction Confidence Map or save the Stain Normalized H&E image to save analysis time. These outputs can be toggled on in the `Output Images` tab in the bottom-left panel of the UI.
+   	- By default, GLASS-AI will not generate the Tumor Segmentation Map or Prediction Confidence Map or save the Stain Normalized H&E image to save analysis time. These outputs can be toggled on in the `Output Images` tab in the bottom-left panel of the UI.
 4.  Click `Run` and wait for the results.
   	- The `Run` button will not be enabled until Steps 1 & 2 are completed (indicated by green lights)
   	- The program will provide status updates at each step of the analysis to give you an idea of how far along it is.
-	- A `Stop Analysis` toggle button will appear while GLASS-AI is analyzing your images. When this button is toggled on, GLASS-AI will abort the analysis at the next possible step.
- 		- Some steps (e.g., gathering results, tumor segmentation image creation) may take some time to complete before GLASS-AI is able to abort the analysis.
+	- A `Stop Analysis` toggle button will appear while GLASS-AI analyzes your images. When this button is toggled on, GLASS-AI will abort the analysis at the next possible step.
+ 		- Some steps (e.g., gathering results, tumor segmentation image creation) may take some time to complete before GLASS-AI can abort the analysis.
     - GLASS-AI will delete the `TempFolder` after analysis completes. This process can take up to about a minute for whole slide images due to the large number of files created during semantic segmentation and can take much longer if using a remote location for your `Output Folder`.
 
 
@@ -80,10 +80,10 @@ You should try running GLASS-AI on some of these files before using your own dat
 > [20patch.tif](https://moffitt.box.com/s/r9phbnflb66gf3142uyukidmlgr3skub)| 2224x2224µm | 00:00:23 | 00:01:16 | 00:01:07 | 00:01:23
 > [40patch.tif](https://moffitt.box.com/s/3n9k117l2x8c59iizcvt7bpck33b6o9r)| 4448x4448µm | 00:01:18 | 00:04:02 | 00:04:08 | 00:04:22
 > [xxsmall.tif](https://moffitt.box.com/s/xxhxraizeser8tglut450n0f14288p28)| 1500x1500µm | 00:00:13 | 00:00:40 | 00:00:37 | 00:00:37
-> [xsmall.tif](https://moffitt.box.com/s/ca9qqyxp4e2dd15349k9a5zjyckbbl4p) | 3480x3480µm | 00:00:50 | 00:03:04 | 00:02:58 | 00:02:32
-> [small.tif](https://moffitt.box.com/s/59ff8wrdqnpoqfzutt54d72j0g1fkwyj)  | 6746x6746µm | 00:14:25 | 00:06:55 | 00:06:21 | 00:07:13
-> [medium.tif](https://moffitt.box.com/s/o7p9v65vyuzh35tm1o7imir8p9ifk7sf) | 8987x9726µm | 00:01:42 | 00:13:28 | 00:11:37 | 00:12:42
-> [slide.svs](https://moffitt.box.com/s/gx77h1d9zxa7so92lnczae20p66ktiez)  |25000x23813µm| 00:15:13 | 00:56:19 | 00:54:21 | 00:51:51
+> [xsmall.tif](https://moffitt.box.com/s/ca9qqyxp4e2dd15349k9a5zjyckbbl4p) | 3480x3480µm | 00:00:50 | 00:03:04 | 00:02:58 | 00:02:32 
+> [small.tif](https://moffitt.box.com/s/59ff8wrdqnpoqfzutt54d72j0g1fkwyj)  | 6746x6746µm | 00:01:42 | 00:06:55 | 00:06:21 | 00:07:13
+> [medium.tif](https://moffitt.box.com/s/o7p9v65vyuzh35tm1o7imir8p9ifk7sf) | 8987x9726µm | 00:14:25 | 00:13:28 | 00:11:37 | 00:12:42
+> [slide.svs](https://moffitt.box.com/s/gx77h1d9zxa7so92lnczae20p66ktiez)  |25000x23813µm| 00:30:16 | 00:56:19 | 00:54:21 | 00:51:51
 
 > Computer Name           | Operating System  | CPU                          | GPU\*                              | Memory\*\*             | Storage Type
 > :----------------------:|:-----------------:|:----------------------------:|:----------------------------------:|:----------------------:|:------------:
@@ -92,20 +92,19 @@ You should try running GLASS-AI on some of these files before using your own dat
 > Mac1 (2019 Macbook Pro) | MacOS Sonoma 14.3 | 2.6 GHz 6-core Intel Core i7 | AMD Radeon Pro 5300 M 4 GB         | 16 GB 2667 MHz DDR4    | SSD
 > Mac2 (2020 iMac)        | MacOS 12.X        | 3.2 GHz 8-core Apple M1      | 7-core integrated M1 GPU           | 16 GB 3200 Mhz LPDDR4X | SSD
 
-*\*GPU acceleration is only possible on CUDA-capable NVIDIA GPUs. The only step GLASS-AI may use a GPU (if a suitable one is available) is during semantic segmentation. The remainder of the analysis is parallelized using the CPU.*
+*\*GPU acceleration is only possible on CUDA-capable NVIDIA GPUs. The only step in which GLASS-AI may use a GPU (if a suitable one is available) is during semantic segmentation. The remainder of the analysis is parallelized using the CPU.*
 
-*\**16 GB of memory should be sufficient to analyze most whole slide images (like the example slide.svs). Slides with more than 1 section may require additional memory to process. If your computer does not have sufficient memory to run this version
-of the GLASS-AI app, you can try an older version (e.g., v1.0.1) using the `Low memory mode` option during runtime. However, this version of the GLASS-AI app is 2-3x faster than previous versions.*
+*\**16 GB of memory should be sufficient to analyze most whole slide images (like the example slide.svs). Slides with more than 1 section may require additional memory to process. If your computer has insufficient memory to run this version of the GLASS-AI app, you can try an older version (e.g., v1.0.1) using the `Low memory mode` option during runtime. However, this version of the GLASS-AI app is 2-3x faster than previous versions.*
 
 ## Ancillary projects
 * [**GLASS-AI report generator**](https://github.com/jlockhar/GLASS-AI-ReportR)
-	* GLASS-AI can help analyze large sets of images, but you'll still need to interpret the results from the output tables and images. This R notebook that analyzes and graphs the results from GLASS-AI in many different ways (e.g., tumor counts, total tumor area, the proportion of lung area occupied by tumors, and intratumor heterogeneity estimates). This file can also be used to perform some basic statistical comparisons between groups that you define.
+	* GLASS-AI can help analyze large sets of images, but you'll still need to interpret the results from the output tables and images. This R notebook analyzes and graphs the results from GLASS-AI in many different ways (e.g., tumor counts, total tumor area, the proportion of lung area occupied by tumors, and intratumor heterogeneity estimates). This file can also be used to perform some basic statistical comparisons between groups that you define.
 * [**GLASS-AI manual annotation editor**](https://github.com/jlockhar/GLASS-AI-annotation-editor)
 	* GLASS-AI is not infallible, but the primary issues we've observed arise from unknown/untrained features in the analyzed images. This MATLAB app allows you to incorporate manual annotations created in [QuPath](https://qupath.github.io/) into the annotations produced by GLASS-AI (for example, including 'Grade 5' LUAD tumor areas or excluding non-lung tissue).
 * [**DEPRECATED-Merge individual tumor files**](https://github.com/jlockhar/GLASS-AI/tree/main/GLASS-AI%20resources/deprecated_merge%20tumor%20files)
 	* These small scripts concatenate all of the files containing the individual tumors from each image into a single `.csv` file (mainly for feeding into old versions of the GLASS-AI report generator; the current version can do this automatically). The bash version is deprecated, as the current version of GLASS-AI outputs `.xlsx` files for each image, which can't be easily interacted with using a command line interface.
 * [**Stained-GLASS-AI**](https://github.com/jlockhar/Stained-GLASS-AI)
-	* The high-resolution grading provided by GLASS-AI can empower molecular analyses of particular cell types, gene expression changes, or activation of signaling cascades marked by immunohistochemistry (IHC). By registering an IHC-stained slide with the one anlayzed by GLASS-AI, cell annotations can be projected onto the tumor grade maps output by GLASS-AI. In addition, a peritumoral analysis module is included to assess changes in the recruitment of cells to regions surrounding tumors.
+	* The high-resolution grading provided by GLASS-AI can empower molecular analyses of particular cell types, gene expression changes, or activation of signaling cascades marked by immunohistochemistry (IHC). By registering an IHC-stained slide with the one analyzed by GLASS-AI, cell annotations can be projected onto the tumor grade maps output by GLASS-AI. In addition, a peritumoral analysis module is included to assess changes in the recruitment of cells to regions surrounding tumors.
 
 ## License
 **This software is for research use only — not for use in diagnostic procedures.** 
