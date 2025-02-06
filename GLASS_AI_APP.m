@@ -461,7 +461,7 @@ classdef GLASS_AI_APP < matlab.apps.AppBase
                     Io = app.NORMALIZE_IO;
                     HEREF = app.NORMALIZE_HEREF;
                     fprintf("%s - %s %s\n",string(datetime),"Applying stain normalization to", app.currentFileNameExt)
-                    normalizedImage = apply(wholeImage,@(bim) applystainnormalization(app,bim.Data,stainMatrix,stainConc,Io,HEREF),...
+                    normalizedImage = apply(wholeImage,@(bim) applystainnormalization(bim.Data,stainMatrix,stainConc,Io,HEREF),...
                         'Adapter',images.blocked.PNGBlocks,...
                         'Level',imageIndex,...
                         'UseParallel',true,...
@@ -1615,29 +1615,6 @@ classdef GLASS_AI_APP < matlab.apps.AppBase
             OD = OD';
             OD = stainMatrix \ OD;
             stainConc = prctile(OD, 99, 2);
-        end
-
-        function normalizedImage = applystainnormalization(~,inputImage,stainMatrix,stainConc,Io,HEREF)
-            % reference maximum stain concentrations for H&E
-            referenceStainConc = [1.9705 ; 1.0308];
-
-            [height, width, channels] = size(inputImage);
-            %calculate OD
-            normalizedImage = reshape(double(inputImage), [], 3);
-            normalizedImage = -log((double(normalizedImage)+1)/Io);
-
-            % determine concentrations of the individual stains
-            normalizedImage = normalizedImage';
-            normalizedImage = stainMatrix \ normalizedImage;
-
-            % normalize stain concentrations
-            normalizedImage = bsxfun(@rdivide, normalizedImage, stainConc);
-            normalizedImage = bsxfun(@times, normalizedImage, referenceStainConc);
-
-            % recreate the image using reference mixing matrix
-            normalizedImage = Io*exp(-HEREF * normalizedImage);
-            normalizedImage = reshape(normalizedImage', height, width, channels);
-            normalizedImage = uint8(normalizedImage);
         end
 
         function smoothedClasses = smoothclasses(app,inputClasses)
