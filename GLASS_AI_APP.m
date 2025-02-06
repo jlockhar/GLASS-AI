@@ -2531,8 +2531,6 @@ classdef GLASS_AI_APP < matlab.apps.AppBase
             %add GLASS-AI logo to UI
             app.GLASSAILogo.ImageSource = fullfile(app.RESOURCE_DIR_PATH,"UI Files","GLASS-AI icon.png");
             
-            %add resource file to MATLAB path
-            addpath(app.RESOURCE_DIR_PATH)
             
             %get starting directory to recall during development
             if not(isdeployed)
