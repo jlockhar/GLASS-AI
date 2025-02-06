@@ -3,6 +3,7 @@ classdef GLASS_AI_APP < matlab.apps.AppBase
     % Properties that correspond to app components
     properties (Access = public)
         GLASSAIUIFigure                 matlab.ui.Figure
+        StopButton                      matlab.ui.control.Button
         UpdateAvailableButton           matlab.ui.control.Button
         GLASSAILogo                     matlab.ui.control.Image
         StopAnalysisButton              matlab.ui.control.StateButton
@@ -142,7 +143,7 @@ classdef GLASS_AI_APP < matlab.apps.AppBase
 
     properties (Access = private)
         % PROPERTIES %
-        GLASSAI_APP_VERSION = '2.0.3' % Version of GLASS-AI standalone app
+        GLASSAI_APP_VERSION = '2.0.5' % Version of GLASS-AI standalone app
         GLASS_AI_NET % Network object for machine learning model
         RESOURCE_DIR_PATH %store path to GLASS_AI_resources directory
         START_DIR
@@ -259,8 +260,10 @@ classdef GLASS_AI_APP < matlab.apps.AppBase
                         % start parallel processing pool if possible/allowed
                         %- do this for each image because pool may be destroyed
                         %- if not used for an extended period of time
-                        app.StatusLabel.Text = "Starting parallel processing pool...";
-                        parpool('Processes');
+                        if isempty(gcp('nocreate'))
+                            app.StatusLabel.Text = "Starting parallel processing pool...";
+                            parpool('Processes');
+                        end
                         fprintf("%s - %s %d %s\n",string(datetime),"PARPOOL: Created parpool with",gcp('nocreate').NumWorkers,"workers.")
 
                         %% get image file info
@@ -455,8 +458,8 @@ classdef GLASS_AI_APP < matlab.apps.AppBase
                     statusupdate(app,"Performing stain normalization");
                     Io = app.NORMALIZE_IO;
                     HEREF = app.NORMALIZE_HEREF;
-                    fprintf("%s - %s %s\n",string(datetime),"Applying stain normalization to", app.currentFileNameExt)
                     normalizedImageTempFile = fullfile(app.OUTPUT_PATH,'TempFolder','normalized_image');
+                    fprintf("%s - %s %s\n",string(datetime),"Applying stain normalization to", app.currentFileNameExt)
                     normalizedImage = apply(wholeImage,@(bim) applystainnormalization(bim.Data,stainMatrix,stainConc,Io,HEREF),...
                         'Adapter',images.blocked.PNGBlocks,...
                         'Level',imageIndex,...
@@ -1325,6 +1328,43 @@ classdef GLASS_AI_APP < matlab.apps.AppBase
                     end % End IF: has20xScan
 
                     % read svs file
+                    [wholeImage] = blockedImage(filePath);
+                    app.IMAGE_RESOLUTION = imageInfo{imageIndex,4};
+                case '.qptiff' 
+                    % get image metadata to find 20x image layer
+                    qptiffInfo = getqptiffinfo(app,filePath);
+
+                    imageInfo = cell([length(qptiffInfo) 4]);
+                    %parse imageInfo into find highest resolution 20X image
+                    for imageLayer = 1:length(imageInfo)
+                        imageInfo{imageLayer,1} = qptiffInfo(imageLayer).Width;
+                        imageInfo{imageLayer,2} = qptiffInfo(imageLayer).Height;
+                        imageInfo{imageLayer,3} = imageLayer;
+                        imageInfo{imageLayer,6} = qptiffInfo(imageLayer).ImageDescription.ImageType;
+                    end
+                    
+                    %get index of full resolution scan. This should be == 1
+                    % pull info for this for calculating downsampled image
+                    % info
+                    fullResScanIndex = find(matches([imageInfo{:,6}],"FullResolution"));
+                    imageInfo{fullResScanIndex,4} = qptiffInfo(fullResScanIndex).ImageDescription.ScanProfile.root.ScanResolution.PixelSizeMicrons;
+                    imageInfo{fullResScanIndex,5} = qptiffInfo(fullResScanIndex).ImageDescription.ScanProfile.root.ScanResolution.Magnification;
+                    imageInfo{fullResScanIndex,6} = "source";
+
+                    imageInfo = estimateimagemagnifications(app,imageInfo);
+
+                    % use 20x full resolution scan if available
+                    has20XScan = matches(qptiffInfo(fullResScanIndex).ImageDescription.Objective,"20x");
+                   
+                    if has20XScan
+                        imageIndex = fullResScanIndex;
+                        app.IMAGE_RESOLUTION = qptiffInfo(fullResScanIndex).ImageDescription.ScanProfile.root.ScanResolution.PixelSizeMicrons;
+                    else% get the largest of the 20x images
+                        index20XImage = find(imageInfo{:,5} == 20);
+                        [~,imageIndex] = max([imageInfo{index20XImage, 1}]);
+                    end % End IF: has20xScan
+
+                    % read qptiff file as blockedImage
                     [wholeImage]=blockedImage(filePath);
                     app.IMAGE_RESOLUTION = imageInfo{imageIndex,4};
                 otherwise % another filetype somehow gets loaded
@@ -1467,6 +1507,33 @@ classdef GLASS_AI_APP < matlab.apps.AppBase
             logfunctioncall(app,"finish");
         end % End function: getsvsinfo
 
+        function qptiffinfo = getqptiffinfo(~,qptiff_file)
+
+            %get image info
+            qptiffinfo = imfinfo(qptiff_file);
+
+            % parse image desciption XML
+            % remove extraneous header info
+            for imageLayer = 1:length(qptiffinfo) 
+                %remove extra info line that causes errors during XML
+                %parsing
+                qptiffinfo(imageLayer).ImageDescription = strtrim(regexprep(qptiffinfo(imageLayer).ImageDescription,'(<\?.*\?>[\r\n])',''));
+           
+                % Store the XML data in a temp file
+                filename = ['temp' '.xml'];
+                fid = fopen(filename,'Wt');
+                fwrite(fid,qptiffinfo(imageLayer).ImageDescription);
+                fclose(fid);
+
+                % Read the file into an struct
+                xmlStruct = readstruct(filename);
+                % Delete the temp file
+                delete(filename);
+                % replace ImageDescription with new struct
+                qptiffinfo(imageLayer).ImageDescription = xmlStruct;
+            end % end  for imageLayer = 1:length(qptiffinfo) 
+        end %end function getqptiffinfo
+
         function outInfo = estimateimagemagnifications(app,imageInfo)
             %estimate missing image magnifications in .svs files using the
             %largest image present. Used to identify 20x magnification
@@ -1548,8 +1615,6 @@ classdef GLASS_AI_APP < matlab.apps.AppBase
             OD = stainMatrix \ OD;
             stainConc = prctile(OD, 99, 2);
         end
-
-        
 
         function smoothedClasses = smoothclasses(app,inputClasses)
             % Applies a smoothing kernel across tumor classes to
@@ -2396,7 +2461,7 @@ classdef GLASS_AI_APP < matlab.apps.AppBase
             app.StatusLabel.Text = oldStatusLabel;
             
         end %function: deletetemporaryfiles
-
+        
     end %methods: functions
 
     % Callbacks that handle component events
@@ -2453,11 +2518,12 @@ classdef GLASS_AI_APP < matlab.apps.AppBase
             %-- This approach should work regardless of platform and
             %-- deployment
             mlapp_location = replace(mfilename('fullpath'),[filesep mfilename()]+textBoundary('end'),'');
-            
+
             % set path to expected 'Resources' folder location
             app.RESOURCE_DIR_PATH = fullfile(mlapp_location,"Resources");
-            % add Resources folder to Matlab path
+            % add 'Resources' folder to Matlab path
             addpath(genpath(app.RESOURCE_DIR_PATH));
+            
             %validate RESOURCE_DIR_PATH by changing UI images
             %change window icon to GLASS-AI
             app.GLASSAIUIFigure.Icon = fullfile(app.RESOURCE_DIR_PATH,"UI Files","icon_48.png");
@@ -2581,7 +2647,7 @@ classdef GLASS_AI_APP < matlab.apps.AppBase
         % Button pushed function: SelectimagesButton
         function SelectimagesButtonPushed(app, event)
             % get list of files from user
-            [app.SELECTED_FILES, pathToFileDir] = uigetfile({'*.svs;*.tif;*.tiff;*.jpg;*.jpeg;*.png','Image Files (*.svs,*.tif,*.tiff,*.jpg,*.jpeg,*.png)'},'Select images for GLASS-AI',app.LAST_SELECTED_DIR, "MultiSelect","on");
+            [app.SELECTED_FILES, pathToFileDir] = uigetfile({'*.svs;*.qptiff;*.tif;*.tiff;*.jpg;*.jpeg;*.png','Image Files (*.svs,*.tif,*.tiff,*.jpg,*.jpeg,*.png)'},'Select images for GLASS-AI',app.LAST_SELECTED_DIR, "MultiSelect","on");
 
             if ~isequal(app.SELECTED_FILES, 0)
                 app.InputFolderLocationLabel.Text = pathToFileDir;
