@@ -2647,7 +2647,7 @@ classdef GLASS_AI_APP < matlab.apps.AppBase
         % Button pushed function: SelectimagesButton
         function SelectimagesButtonPushed(app, event)
             % get list of files from user
-            [app.SELECTED_FILES, pathToFileDir] = uigetfile({'*.svs;*.tif;*.tiff;*.jpg;*.jpeg;*.png','Image Files (*.svs,*.tif,*.tiff,*.jpg,*.jpeg,*.png)'},'Select images for GLASS-AI',app.LAST_SELECTED_DIR, "MultiSelect","on");
+            [app.SELECTED_FILES, pathToFileDir] = uigetfile({'*.svs;*.qptiff;*.tif;*.tiff;*.jpg;*.jpeg;*.png','Image Files (*.svs,*.qptiff,*.tif,*.tiff,*.jpg,*.jpeg,*.png)'},'Select images for GLASS-AI',app.LAST_SELECTED_DIR, "MultiSelect","on");
 
             if ~isequal(app.SELECTED_FILES, 0)
                 app.InputFolderLocationLabel.Text = pathToFileDir;
