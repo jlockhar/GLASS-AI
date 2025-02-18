@@ -34,7 +34,10 @@ classdef GLASS_AI_APP < matlab.apps.AppBase
         TransparencyThresholdEditFieldLabel  matlab.ui.control.Label
         NormBackgroundIntensity         matlab.ui.control.NumericEditField
         BackgroundIntensityLabel        matlab.ui.control.Label
-        StainODMatrixPanel              matlab.ui.container.Panel
+        RefStainMatrixPanel             matlab.ui.container.Panel
+        ConcentrationLabel              matlab.ui.control.Label
+        EosConc                         matlab.ui.control.NumericEditField
+        HemConc                         matlab.ui.control.NumericEditField
         BEditFieldLabel_2               matlab.ui.control.Label
         HemSwatch                       matlab.ui.control.Label
         EosSwatch                       matlab.ui.control.Label
@@ -142,7 +145,7 @@ classdef GLASS_AI_APP < matlab.apps.AppBase
 
     properties (Access = private)
         % PROPERTIES %
-        GLASSAI_APP_VERSION = '2.0.5' % Version of GLASS-AI standalone app
+        GLASSAI_APP_VERSION = '2.1.1' % Version of GLASS-AI standalone app
         GLASS_AI_NET % Network object for machine learning model
         RESOURCE_DIR_PATH %store path to GLASS_AI_resources directory
         START_DIR
@@ -163,7 +166,8 @@ classdef GLASS_AI_APP < matlab.apps.AppBase
         NORMALIZE_BETA % Minimum OD for stain normalization
         NORMALIZE_IO % Background intensity for stain normalization
         NORMALIZE_THRESHOLD % Minimum percent opaque pixels for normalization
-        NORMALIZE_HEREF % Color vectors for hematoxylin and eosin stain
+        NORMALIZE_REF_STAINMATRIX % Color vectors for hematoxylin and eosin stain
+        NORMALIZATION_REF_CONC % Reference stain concentrations for normalization
         REMOVE_PURE_COLORS % Remove pure colors during stain normalization
         OUTPUT_IMAGE_PREVIEW % True = make preview figure of output images
         OUTPUT_GRADE_IMAGE_SCALE % scaling applied to grade map output image
@@ -210,7 +214,7 @@ classdef GLASS_AI_APP < matlab.apps.AppBase
         logFileName % name of log file
         logFilePath % location of log file
         ErrorAlertAlreadyCreated = false % Flag to store if an error has occured in a defined try block
-        
+
     end % End Properties
 
     methods (Access = private)
@@ -453,15 +457,20 @@ classdef GLASS_AI_APP < matlab.apps.AppBase
                     fprintf("%s - %s %s\n",string(datetime),"Estimated staining using overview image for", app.currentFileNameExt)
                     fprintf("%s\n","Stain Matrix")
                     fprintf("%0.4f\t%0.4f\n",transpose(stainMatrix(:,1)),transpose(stainMatrix(:,2)))
-                    fprintf("Maximum stain concentrations: %0.4f\t%0.4f\n",stainConc(1),stainConc(2))
+                    fprintf("Estimated stain concentrations: %0.4f\t%0.4f\n",stainConc(1),stainConc(2))
                     clear gathered_overviewImage %dont use for preview in case 1/16 downsampling is too much
                     
                     %apply stain to wholeImage
                     statusupdate(app,"Performing stain normalization");
                     Io = app.NORMALIZE_IO;
-                    HEREF = app.NORMALIZE_HEREF;
+                    refStainMatrix = app.NORMALIZE_REF_STAINMATRIX;
+                    refStainConcentration = app.NORMALIZATION_REF_CONC;
                     fprintf("%s - %s %s\n",string(datetime),"Applying stain normalization to", app.currentFileNameExt)
-                    normalizedImage = apply(wholeImage,@(bim) applystainnormalization(bim.Data,stainMatrix,stainConc,Io,HEREF),...
+                    normalizedImage = apply(wholeImage,@(bim) applystainnormalization(app, bim.Data, stainMatrix,stainConc,...
+                            Io = Io,...
+                            referenceStainMatrix = refStainMatrix,...
+                            referenceStainConc = refStainConcentration),...
+                        'BlockLocationSet',maskedTissueBlockSet,...
                         'Adapter',images.blocked.PNGBlocks,...
                         'Level',imageIndex,...
                         'UseParallel',true,...
@@ -958,7 +967,7 @@ classdef GLASS_AI_APP < matlab.apps.AppBase
                             %current output
                             [normalizedImageFilePath, overwriteAll] = promptreplacexistingfile(app,normalizedImageFilePath,overwriteAll);
                             fprintf("%s - %s %s %s %s\n", string(datetime),"Saving stain normalized image for", app.currentFileNameExt, "to",normalizedImageFilePath)
-                            write(normalizedImage,normalizedImageFilePath,'Adapter',adapter,'BlockSize',16);
+                            write(normalizedImage,normalizedImageFilePath,'Adapter',adapter);
                             fprintf("%s - %s %s %s %s\n", string(datetime),"Finished saving stain normalized image for", app.currentFileNameExt, "to",normalizedImageFilePath)
                         catch ME
                             % alert user that an error occured if not already done
@@ -1083,6 +1092,7 @@ classdef GLASS_AI_APP < matlab.apps.AppBase
 
                         %show original image
                         originalPanel = nexttile(previewLayout);
+                        originalPanel.PlotBoxAspectRatioMode  = 'manual';
                         imshow(wholeImage,'Parent',originalPanel)
                         title("Original Image")
                         axesList = [axesList originalPanel];
@@ -1091,6 +1101,7 @@ classdef GLASS_AI_APP < matlab.apps.AppBase
                         %show stain normalized image if done
                         if app.NORMALIZE_STAINS
                             normalizedPanel = nexttile(previewLayout);
+                            normalizedPanel.PlotBoxAspectRatioMode  = 'manual';
                             imshow(normalizedImage,'Parent',normalizedPanel)
                             title("Normalized Image")
                             axesList = [axesList normalizedPanel];
@@ -1100,6 +1111,7 @@ classdef GLASS_AI_APP < matlab.apps.AppBase
                         % show tumor segmentation map
                         if app.MAKE_SEGMENTATION_IMAGE
                             tumorSegmentationPanel = nexttile(previewLayout);
+                            tumorSegmentationPanel.PlotBoxAspectRatioMode  = 'manual';
                             imshow(segmentationImage,'Parent',tumorSegmentationPanel)
                             title("Tumor Segmentation");
                             axesList = [axesList tumorSegmentationPanel];
@@ -1108,6 +1120,7 @@ classdef GLASS_AI_APP < matlab.apps.AppBase
 
                         % show tumor grade map
                         gradeMapPanel = nexttile(previewLayout);
+                        gradeMapPanel.PlotBoxAspectRatioMode  = 'manual';
                         imshow(gradeImage, 'Parent',gradeMapPanel)
                         title("Tumor Grades")
                         axesList = [axesList gradeMapPanel];
@@ -1116,6 +1129,7 @@ classdef GLASS_AI_APP < matlab.apps.AppBase
                         % show max class probability map if requested
                         if app.MAKE_CONFIDENCE_MAP
                             maxClassProbabilityPanel = nexttile(previewLayout);
+                            maxClassProbabilityPanel.PlotBoxAspectRatioMode  = 'manual';
                             imshow(maxClassProbability,maxClassProbablityColorMap,'Parent',maxClassProbabilityPanel)
                             title("Predicted Class Probability")
                             colorBar = colorbar('Location','southoutside');
@@ -1129,6 +1143,7 @@ classdef GLASS_AI_APP < matlab.apps.AppBase
                         % show overall tumor grade map if requested
                         if app.ASSIGN_OVERALL_GRADES
                             overallGradeMapPanel = nexttile(previewLayout);
+                            overallGrademapPanel.PlotBoxAspectRatioMode  = 'manual';
                             imshow(overallTumorGradeImage,'Parent',overallGradeMapPanel)
                             title("Overall Tumor Grades")
                             axesList = [axesList overallGradeMapPanel];
@@ -1191,14 +1206,15 @@ classdef GLASS_AI_APP < matlab.apps.AppBase
 
                     %parse major minor patch version from this app
                     appVersionMajor = extract(app.GLASSAI_APP_VERSION,regexpPattern("(?<=^)[0-9]+(?=\.)"));
-                    appVersionMinor = extract(app.GLASSAI_APP_VERSION,regexpPattern("(?<=^[0-9]+\.)[0-9]+(?=\.)"));
-                    appVersionPatch = extract(app.GLASSAI_APP_VERSION,regexpPattern("(?<=^[0-9]+\.[0-9]+\.)[0-9]+(?=$)"));
+                    appVersionMinor = extract(app.GLASSAI_APP_VERSION,regexpPattern("(?<=^[0-9]\.)[0-9]+(?=\.)"));
+                    appVersionPatch = extract(app.GLASSAI_APP_VERSION,regexpPattern("(?<=^[0-9]\.[0-9]\.)[0-9]+(?=$)"));
 
                     %compare version numbers
                     majorUpdateAvailable = str2double(appVersionMajor) < str2double(gitVersionMajor);
                     minorUpdateAvailable = ~majorUpdateAvailable & str2double(appVersionMinor) < str2double(gitVersionMinor);
                     patchUpdateAvailable = ~majorUpdateAvailable & ~minorUpdateAvailable & str2double(appVersionPatch) < str2double(gitVersionPatch);
 
+                    
                     %prompt user to update the app if version is behind GitHub
                     if majorUpdateAvailable
                         app.UpdateAvailableButton.BackgroundColor = [1 0 0];
@@ -1615,6 +1631,35 @@ classdef GLASS_AI_APP < matlab.apps.AppBase
             OD = OD';
             OD = stainMatrix \ OD;
             stainConc = prctile(OD, 99, 2);
+        end
+
+        function normalizedImage = applystainnormalization(app,inputImage,inputStainMatrix,inputStainConc,options)
+            arguments
+                app
+                inputImage (:,:,3) uint8 %m-by-n RGB image
+                inputStainMatrix (3,2) double %3-by-2 matrix of stain absorbances
+                inputStainConc (2,1) double %2-by-1 vector of stain concentrations
+                options.Io (1,1) double = 245 %intensity of transparent pixels
+                options.referenceStainMatrix (3,2) double = [0.551 0.171; 0.863 0.783; 0.339 0.334] %reference stain color matrix
+                options.referenceStainConc (2,1) double = [1.9705 ; 1.0308];
+            end
+            [height, width, channels] = size(inputImage);
+            %calculate OD
+            normalizedImage = reshape(double(inputImage), [], 3);
+            normalizedImage = -log((double(normalizedImage)+1)/options.Io);
+
+            % determine concentrations of the individual stains
+            normalizedImage = normalizedImage';
+            normalizedImage = inputStainMatrix \ normalizedImage;
+
+            % normalize stain concentrations
+            normalizedImage = bsxfun(@rdivide, normalizedImage, inputStainConc);
+            normalizedImage = bsxfun(@times, normalizedImage, options.referenceStainConc);
+
+            % recreate the image using reference mixing matrix
+            normalizedImage = options.Io*exp(-options.referenceStainMatrix * normalizedImage);
+            normalizedImage = reshape(normalizedImage', height, width, channels);
+            normalizedImage = uint8(normalizedImage);
         end
 
         function smoothedClasses = smoothclasses(app,inputClasses)
@@ -2531,8 +2576,6 @@ classdef GLASS_AI_APP < matlab.apps.AppBase
             %add GLASS-AI logo to UI
             app.GLASSAILogo.ImageSource = fullfile(app.RESOURCE_DIR_PATH,"UI Files","GLASS-AI icon.png");
             
-            %add resource file to MATLAB path
-            addpath(app.RESOURCE_DIR_PATH)
             
             %get starting directory to recall during development
             if not(isdeployed)
@@ -2649,7 +2692,7 @@ classdef GLASS_AI_APP < matlab.apps.AppBase
         % Button pushed function: SelectimagesButton
         function SelectimagesButtonPushed(app, event)
             % get list of files from user
-            [app.SELECTED_FILES, pathToFileDir] = uigetfile({'*.svs;*.tif;*.tiff;*.jpg;*.jpeg;*.png','Image Files (*.svs,*.tif,*.tiff,*.jpg,*.jpeg,*.png)'},'Select images for GLASS-AI',app.LAST_SELECTED_DIR, "MultiSelect","on");
+            [app.SELECTED_FILES, pathToFileDir] = uigetfile({'*.svs;*.qptiff;*.tif;*.tiff;*.jpg;*.jpeg;*.png','Image Files (*.svs,*.qptiff,*.tif,*.tiff,*.jpg,*.jpeg,*.png)'},'Select images for GLASS-AI',app.LAST_SELECTED_DIR, "MultiSelect","on");
 
             if ~isequal(app.SELECTED_FILES, 0)
                 app.InputFolderLocationLabel.Text = pathToFileDir;
@@ -2812,13 +2855,14 @@ classdef GLASS_AI_APP < matlab.apps.AppBase
             fprintf("%s:\t%.3f\n","Stain normalization background", app.NORMALIZE_IO);
             app.NORMALIZE_THRESHOLD = app.NormMinimumTissuePercent.Value;
             fprintf("%s:\t%.3f\n","Stain normalization tissue threshold", app.NORMALIZE_THRESHOLD);
-            app.NORMALIZE_HEREF = [
+            app.NORMALIZE_REF_STAINMATRIX = [
                 app.HemRedInput.Value       app.EosRedInput.Value
                 app.HemGreenInput.Value     app.EosGreenInput.Value
                 app.HemBlueInput.Value      app.EosBlueInput.Value
                 ];
-            fprintf("%s:\t%.3f\t%.3f\t%.3f\n","Stain normalization hematoxylin", app.HemRedInput.Value,app.HemGreenInput.Value, app.HemBlueInput.Value);
-            fprintf("%s:\t%.3f\t%.3f\t%.3f\n","Stain normalization eosin", app.EosRedInput.Value,app.EosGreenInput.Value, app.EosBlueInput.Value);
+            fprintf("%s:\t%.3f\n","Stain normalization hematoxylin reference concentation", app.HemConc.Value);
+            fprintf("%s:\t%.3f\n","Stain normalization eosin reference concentation", app.EosConc.Value);
+            app.NORMALIZATION_REF_CONC = [app.HemConc.Value, app.EosConc.Value];
             app.REMOVE_PURE_COLORS = app.RemovepurecolorpixelsCheckBox.Value;
             fprintf("%s:\t%s\n","Remove pure colors during normalization", string(app.REMOVE_PURE_COLORS));
 
@@ -2960,6 +3004,8 @@ classdef GLASS_AI_APP < matlab.apps.AppBase
             app.NormPseudomaxTolerance.Value = 1;
             app.NormTransparencyThreshold.Value = 0.1;
             app.NormBackgroundIntensity.Value = 240;
+            app.HemConc.Value = 1.970;
+            app.EosConc.Value = 1.031;
             %refresh colors on swatches
             app.HemSwatch.BackgroundColor = [1-app.HemRedInput.Value, 1-app.HemGreenInput.Value, 1-app.HemBlueInput.Value];
             app.EosSwatch.BackgroundColor = [1-app.EosRedInput.Value, 1-app.EosGreenInput.Value, 1-app.EosBlueInput.Value];
@@ -3290,116 +3336,138 @@ classdef GLASS_AI_APP < matlab.apps.AppBase
             app.StainNormalizationParametersTab.Title = 'Stain Normalization Parameters';
             app.StainNormalizationParametersTab.BackgroundColor = [0.902 0.902 0.902];
 
-            % Create StainODMatrixPanel
-            app.StainODMatrixPanel = uipanel(app.StainNormalizationParametersTab);
-            app.StainODMatrixPanel.Tooltip = {'Define color vectors for hematoxylin and eosin stain. Default vectors were estimated from images used to train GLASS-AI.'};
-            app.StainODMatrixPanel.Title = 'Stain OD Matrix';
-            app.StainODMatrixPanel.BackgroundColor = [0.9412 0.9412 0.9412];
-            app.StainODMatrixPanel.FontWeight = 'bold';
-            app.StainODMatrixPanel.Position = [175 57 126 162];
+            % Create RefStainMatrixPanel
+            app.RefStainMatrixPanel = uipanel(app.StainNormalizationParametersTab);
+            app.RefStainMatrixPanel.Tooltip = {'Define color vectors for hematoxylin and eosin stain. Default vectors were estimated from images used to train GLASS-AI.'};
+            app.RefStainMatrixPanel.Title = 'Ref. Stain Matrix';
+            app.RefStainMatrixPanel.BackgroundColor = [0.9412 0.9412 0.9412];
+            app.RefStainMatrixPanel.FontWeight = 'bold';
+            app.RefStainMatrixPanel.Position = [175 7 126 212];
 
             % Create EosRedInput
-            app.EosRedInput = uieditfield(app.StainODMatrixPanel, 'numeric');
+            app.EosRedInput = uieditfield(app.RefStainMatrixPanel, 'numeric');
             app.EosRedInput.Limits = [0 1];
             app.EosRedInput.ValueChangedFcn = createCallbackFcn(app, @StainVectorValueChanged, true);
-            app.EosRedInput.Position = [74 100 48 22];
+            app.EosRedInput.Position = [74 150 48 22];
             app.EosRedInput.Value = 0.171;
 
             % Create EosGreenInput
-            app.EosGreenInput = uieditfield(app.StainODMatrixPanel, 'numeric');
+            app.EosGreenInput = uieditfield(app.RefStainMatrixPanel, 'numeric');
             app.EosGreenInput.Limits = [0 1];
             app.EosGreenInput.ValueChangedFcn = createCallbackFcn(app, @StainVectorValueChanged, true);
-            app.EosGreenInput.Position = [74 77 48 22];
+            app.EosGreenInput.Position = [74 127 48 22];
             app.EosGreenInput.Value = 0.783;
 
             % Create EosBlueInput
-            app.EosBlueInput = uieditfield(app.StainODMatrixPanel, 'numeric');
+            app.EosBlueInput = uieditfield(app.RefStainMatrixPanel, 'numeric');
             app.EosBlueInput.Limits = [0 1];
             app.EosBlueInput.ValueChangedFcn = createCallbackFcn(app, @StainVectorValueChanged, true);
-            app.EosBlueInput.Position = [74 53 48 22];
+            app.EosBlueInput.Position = [74 103 48 22];
             app.EosBlueInput.Value = 0.334;
 
             % Create HemLabel
-            app.HemLabel = uilabel(app.StainODMatrixPanel);
+            app.HemLabel = uilabel(app.RefStainMatrixPanel);
             app.HemLabel.HorizontalAlignment = 'center';
             app.HemLabel.FontWeight = 'bold';
-            app.HemLabel.Position = [29 117 35 22];
+            app.HemLabel.Position = [29 167 35 22];
             app.HemLabel.Text = 'Hem.';
 
             % Create EosLabel
-            app.EosLabel = uilabel(app.StainODMatrixPanel);
+            app.EosLabel = uilabel(app.RefStainMatrixPanel);
             app.EosLabel.HorizontalAlignment = 'center';
             app.EosLabel.FontWeight = 'bold';
-            app.EosLabel.Position = [83 117 30 22];
+            app.EosLabel.Position = [83 167 30 22];
             app.EosLabel.Text = 'Eos.';
 
             % Create REditFieldLabel
-            app.REditFieldLabel = uilabel(app.StainODMatrixPanel);
+            app.REditFieldLabel = uilabel(app.RefStainMatrixPanel);
             app.REditFieldLabel.HorizontalAlignment = 'right';
             app.REditFieldLabel.FontWeight = 'bold';
-            app.REditFieldLabel.Position = [5 100 11 22];
+            app.REditFieldLabel.Position = [5 150 11 22];
             app.REditFieldLabel.Text = 'R';
 
             % Create HemRedInput
-            app.HemRedInput = uieditfield(app.StainODMatrixPanel, 'numeric');
+            app.HemRedInput = uieditfield(app.RefStainMatrixPanel, 'numeric');
             app.HemRedInput.Limits = [0 1];
             app.HemRedInput.ValueChangedFcn = createCallbackFcn(app, @StainVectorValueChanged, true);
-            app.HemRedInput.Position = [23 100 48 22];
+            app.HemRedInput.Position = [23 150 48 22];
             app.HemRedInput.Value = 0.551;
 
             % Create GEditFieldLabel
-            app.GEditFieldLabel = uilabel(app.StainODMatrixPanel);
+            app.GEditFieldLabel = uilabel(app.RefStainMatrixPanel);
             app.GEditFieldLabel.HorizontalAlignment = 'right';
             app.GEditFieldLabel.FontWeight = 'bold';
-            app.GEditFieldLabel.Position = [1 77 15 22];
+            app.GEditFieldLabel.Position = [1 127 15 22];
             app.GEditFieldLabel.Text = 'G';
 
             % Create HemGreenInput
-            app.HemGreenInput = uieditfield(app.StainODMatrixPanel, 'numeric');
+            app.HemGreenInput = uieditfield(app.RefStainMatrixPanel, 'numeric');
             app.HemGreenInput.Limits = [0 1];
             app.HemGreenInput.ValueChangedFcn = createCallbackFcn(app, @StainVectorValueChanged, true);
-            app.HemGreenInput.Position = [23 77 48 22];
+            app.HemGreenInput.Position = [23 127 48 22];
             app.HemGreenInput.Value = 0.863;
 
             % Create BEditFieldLabel
-            app.BEditFieldLabel = uilabel(app.StainODMatrixPanel);
+            app.BEditFieldLabel = uilabel(app.RefStainMatrixPanel);
             app.BEditFieldLabel.HorizontalAlignment = 'right';
             app.BEditFieldLabel.FontWeight = 'bold';
-            app.BEditFieldLabel.Position = [2 53 14 22];
+            app.BEditFieldLabel.Position = [2 103 14 22];
             app.BEditFieldLabel.Text = 'B';
 
             % Create HemBlueInput
-            app.HemBlueInput = uieditfield(app.StainODMatrixPanel, 'numeric');
+            app.HemBlueInput = uieditfield(app.RefStainMatrixPanel, 'numeric');
             app.HemBlueInput.Limits = [0 1];
             app.HemBlueInput.ValueChangedFcn = createCallbackFcn(app, @StainVectorValueChanged, true);
-            app.HemBlueInput.Position = [23 53 48 22];
+            app.HemBlueInput.Position = [23 103 48 22];
             app.HemBlueInput.Value = 0.339;
 
             % Create ResetStainParametersButton
-            app.ResetStainParametersButton = uibutton(app.StainODMatrixPanel, 'push');
+            app.ResetStainParametersButton = uibutton(app.RefStainMatrixPanel, 'push');
             app.ResetStainParametersButton.ButtonPushedFcn = createCallbackFcn(app, @ResetStainParametersButtonPushed, true);
             app.ResetStainParametersButton.Tooltip = {'Push to reset the stain normalization paramaters to the defualt values.'};
-            app.ResetStainParametersButton.Position = [23 3 98 22];
+            app.ResetStainParametersButton.Position = [24 8 98 22];
             app.ResetStainParametersButton.Text = 'Reset to default';
 
             % Create EosSwatch
-            app.EosSwatch = uilabel(app.StainODMatrixPanel);
+            app.EosSwatch = uilabel(app.RefStainMatrixPanel);
             app.EosSwatch.BackgroundColor = [0.8314 0.1216 0.6196];
-            app.EosSwatch.Position = [74 28 48 22];
+            app.EosSwatch.Position = [74 78 48 22];
             app.EosSwatch.Text = '    ';
 
             % Create HemSwatch
-            app.HemSwatch = uilabel(app.StainODMatrixPanel);
+            app.HemSwatch = uilabel(app.RefStainMatrixPanel);
             app.HemSwatch.BackgroundColor = [0.451 0.2392 0.6588];
-            app.HemSwatch.Position = [23 28 48 22];
+            app.HemSwatch.Position = [23 78 48 22];
             app.HemSwatch.Text = '    ';
 
             % Create BEditFieldLabel_2
-            app.BEditFieldLabel_2 = uilabel(app.StainODMatrixPanel);
+            app.BEditFieldLabel_2 = uilabel(app.RefStainMatrixPanel);
             app.BEditFieldLabel_2.HorizontalAlignment = 'right';
             app.BEditFieldLabel_2.FontWeight = 'bold';
-            app.BEditFieldLabel_2.Position = [5 30 11 22];
+            app.BEditFieldLabel_2.Position = [5 80 11 22];
             app.BEditFieldLabel_2.Text = '=';
+
+            % Create HemConc
+            app.HemConc = uieditfield(app.RefStainMatrixPanel, 'numeric');
+            app.HemConc.Limits = [0 5];
+            app.HemConc.ValueDisplayFormat = '%.3f';
+            app.HemConc.Tooltip = {'Hematoxylin stain concentration to use as reference'};
+            app.HemConc.Position = [25 34 47 22];
+            app.HemConc.Value = 1.9705;
+
+            % Create EosConc
+            app.EosConc = uieditfield(app.RefStainMatrixPanel, 'numeric');
+            app.EosConc.Limits = [0 5];
+            app.EosConc.ValueDisplayFormat = '%.3f';
+            app.EosConc.Tooltip = {'Eosin stain concentration to use as reference'};
+            app.EosConc.Position = [76 34 47 22];
+            app.EosConc.Value = 1.0308;
+
+            % Create ConcentrationLabel
+            app.ConcentrationLabel = uilabel(app.RefStainMatrixPanel);
+            app.ConcentrationLabel.FontWeight = 'bold';
+            app.ConcentrationLabel.Position = [32 55 86 22];
+            app.ConcentrationLabel.Text = 'Concentration';
 
             % Create BackgroundIntensityLabel
             app.BackgroundIntensityLabel = uilabel(app.StainNormalizationParametersTab);
