@@ -147,8 +147,8 @@ classdef GLASS_AI_APP < matlab.apps.AppBase
         % PROPERTIES %
         GLASSAI_APP_VERSION = '2.1.1' % Version of GLASS-AI standalone app
         GLASS_AI_NET % Network object for machine learning model
-        RESOURCE_DIR_PATH %store path to GLASS_AI_resources directory
-        START_DIR
+        RESOURCE_DIR_PATH % Path to GLASS_AI_resources directory
+        START_DIR % Path to starting directory in development/undeployed instances
 
         % RUNTIME_VARS %
         LAST_SELECTED_DIR % Path to last selected directory
