@@ -564,7 +564,7 @@ classdef GLASS_AI_APP < matlab.apps.AppBase
                     classificationOutputFilePath = fullfile(app.OUTPUT_PATH,strcat(app.currentFileName,'_classes.mat'));
                     %check for existing file and prompt to replace
                     overwriteAll = ""; %not yet defined by user, initialize as empty string
-                    [classificationOutputFilePath, overwriteAll] = promptreplacexistingfile(app,classificationOutputFilePath,overwriteAll,".mat","_new.mat");
+                    [classificationOutputFilePath, overwriteAll] = promptreplaceexistingfile(app,classificationOutputFilePath,overwriteAll,".mat","_new.mat");
                     fprintf("%s - %s %s %s %s\n", string(datetime),"Saving classifications for",app.currentFileNameExt,"to",classificationOutputFilePath)
                     save(classificationOutputFilePath,'classifications', '-v7.3');
                     fprintf("%s - %s %s %s %s\n", string(datetime),"Saved raw classifications for",app.currentFileNameExt,"to",classificationOutputFilePath)
@@ -616,7 +616,7 @@ classdef GLASS_AI_APP < matlab.apps.AppBase
                 end
                 try
                     tumorLabelOutputFilePath=fullfile(app.OUTPUT_PATH, strcat(app.currentFileName,'_tumor_labels.mat'));
-                    [tumorLabelOutputFilePath, overwriteAll] = promptreplacexistingfile(app,tumorLabelOutputFilePath,overwriteAll,".mat","_new.mat");
+                    [tumorLabelOutputFilePath, overwriteAll] = promptreplaceexistingfile(app,tumorLabelOutputFilePath,overwriteAll,".mat","_new.mat");
                     fprintf("%s - %s %s %s %s\n", string(datetime),"Saving tumor label mask for",app.currentFileNameExt,"to",tumorLabelOutputFilePath)
                     save(tumorLabelOutputFilePath,'tumorIdLabelMask', '-v7.3');
                     fprintf("%s - %s %s %s %s\n", string(datetime),"Saved tumor label mask for",app.currentFileNameExt,"to",tumorLabelOutputFilePath)
@@ -660,7 +660,7 @@ classdef GLASS_AI_APP < matlab.apps.AppBase
                 end
                 
                 individualTumorStatsFilePath = fullfile(app.OUTPUT_PATH,strcat(app.currentFileName, ".xlsx"));
-                [individualTumorStatsFilePath, overwriteAll] = promptreplacexistingfile(app,individualTumorStatsFilePath,overwriteAll,".xlsx","_new.xlsx");
+                [individualTumorStatsFilePath, overwriteAll] = promptreplaceexistingfile(app,individualTumorStatsFilePath,overwriteAll,".xlsx","_new.xlsx");
                 %get name of the indiviudal tumor stats file to use in the
                 %image level stats file
                 [~,imageName,~] = fileparts(individualTumorStatsFilePath);
@@ -736,7 +736,7 @@ classdef GLASS_AI_APP < matlab.apps.AppBase
                     %Save tumor grade image to file
                     statusupdate(app,"Saving pixel-level tumor grade map");
                     tumorGradeImageFilePath = fullfile(app.OUTPUT_PATH,strcat(app.currentFileName+"_grades.tif"));
-                    [tumorGradeImageFilePath, overwriteAll] = promptreplacexistingfile(app,tumorGradeImageFilePath,overwriteAll);
+                    [tumorGradeImageFilePath, overwriteAll] = promptreplaceexistingfile(app,tumorGradeImageFilePath,overwriteAll);
                     if (xImagePixels * yImagePixels) > 40000000 %write as tiled tiff for large images
                         writetiff(app,gradeImage,tumorGradeImageFilePath);
                         fprintf("%s - %s %s %s %s %s\n", string(datetime),"Saved tumor grade image for", app.currentFileNameExt, "to",tumorGradeImageFilePath,"using writetiff")
@@ -788,7 +788,7 @@ classdef GLASS_AI_APP < matlab.apps.AppBase
                         %Save overall tumor grade mask to file
                         statusupdate(app,"Saving overall tumor grade mask")
                         overallTumorGradeOutputFilePath = fullfile(app.OUTPUT_PATH, strcat(app.currentFileName,'_overall_tumor_grades.mat'));
-                        [overallTumorGradeOutputFilePath, overwriteAll] = promptreplacexistingfile(app,overallTumorGradeOutputFilePath,overwriteAll,".mat","_new.mat");
+                        [overallTumorGradeOutputFilePath, overwriteAll] = promptreplaceexistingfile(app,overallTumorGradeOutputFilePath,overwriteAll,".mat","_new.mat");
                         fprintf("%s - %s %s %s %s\n", string(datetime),"Saving overall tumor grade mask for",app.currentFileNameExt,"to",overallTumorGradeOutputFilePath)
                         save(overallTumorGradeOutputFilePath,'classifications', '-v7.3');
                         fprintf("%s - %s %s %s %s\n", string(datetime),"Saved overall tumor grade mask for",app.currentFileNameExt,"to",overallTumorGradeOutputFilePath)
@@ -826,7 +826,7 @@ classdef GLASS_AI_APP < matlab.apps.AppBase
                         % save overallTumorGradeImage to file
                         statusupdate(app,"Saving overall tumor grade map")
                         overallTumorGradeImageFilePath = fullfile(app.OUTPUT_PATH,strcat(app.currentFileName+"_overall_grades.tif"));
-                        [overallTumorGradeImageFilePath, overwriteAll] = promptreplacexistingfile(app,overallTumorGradeImageFilePath,overwriteAll);
+                        [overallTumorGradeImageFilePath, overwriteAll] = promptreplaceexistingfile(app,overallTumorGradeImageFilePath,overwriteAll);
                         if (xImagePixels * yImagePixels) > 40000000 % use writetiff() for large images
                             writetiff(app,overallTumorGradeImage,overallTumorGradeImageFilePath);
                             fprintf("%s - %s %s %s %s %s\n", string(datetime),"Saved tumor grade image for", app.currentFileNameExt, "to",overallTumorGradeImageFilePath,"using writetiff")
@@ -910,7 +910,7 @@ classdef GLASS_AI_APP < matlab.apps.AppBase
                         %Save tumor segmentation image to file
                         statusupdate(app,"Saving tumor segmentation image");
                         segmentationImageFilePath = fullfile(app.OUTPUT_PATH,strcat(app.currentFileName+"_segmentation.tif"));
-                        [segmentationImageFilePath, overwriteAll] = promptreplacexistingfile(app,segmentationImageFilePath,overwriteAll);
+                        [segmentationImageFilePath, overwriteAll] = promptreplaceexistingfile(app,segmentationImageFilePath,overwriteAll);
                         if (xImagePixels * yImagePixels) > 40000000 %write as tiled tiff for large images
                             writetiff(app,segmentationImage,segmentationImageFilePath);
                             fprintf("%s - %s %s %s %s %s\n", string(datetime),"Saved tumor segmentation image for", app.currentFileNameExt, "to",segmentationImageFilePath,"using writetiff")
@@ -965,7 +965,7 @@ classdef GLASS_AI_APP < matlab.apps.AppBase
                             %Write function can't overwrite by default.
                             %prompt user to replace existing file or rename
                             %current output
-                            [normalizedImageFilePath, overwriteAll] = promptreplacexistingfile(app,normalizedImageFilePath,overwriteAll);
+                            [normalizedImageFilePath, overwriteAll] = promptreplaceexistingfile(app,normalizedImageFilePath,overwriteAll);
                             fprintf("%s - %s %s %s %s\n", string(datetime),"Saving stain normalized image for", app.currentFileNameExt, "to",normalizedImageFilePath)
                             write(normalizedImage,normalizedImageFilePath,'Adapter',adapter);
                             fprintf("%s - %s %s %s %s\n", string(datetime),"Finished saving stain normalized image for", app.currentFileNameExt, "to",normalizedImageFilePath)
@@ -1022,7 +1022,7 @@ classdef GLASS_AI_APP < matlab.apps.AppBase
 
                         %Save image to file
                         maxClassProbabilityImageFilePath = fullfile(app.OUTPUT_PATH,strcat(app.currentFileName+"_max_probability.tif"));
-                        [maxClassProbabilityImageFilePath, overwriteAll] = promptreplacexistingfile(app,maxClassProbabilityImageFilePath,overwriteAll);
+                        [maxClassProbabilityImageFilePath, overwriteAll] = promptreplaceexistingfile(app,maxClassProbabilityImageFilePath,overwriteAll);
                         fprintf("%s - %s %s %s %s\n", string(datetime),"Saving max probability map for",app.currentFileNameExt,"to",maxClassProbabilityImageFilePath)
                         if (xImagePixels * yImagePixels) > 40000000 %write as tiled tiff for large images
                             writetiff(app,maxClassProbability,maxClassProbabilityImageFilePath);
@@ -1092,7 +1092,6 @@ classdef GLASS_AI_APP < matlab.apps.AppBase
 
                         %show original image
                         originalPanel = nexttile(previewLayout);
-                        originalPanel.PlotBoxAspectRatioMode  = 'manual';
                         imshow(wholeImage,'Parent',originalPanel)
                         title("Original Image")
                         axesList = [axesList originalPanel];
@@ -1101,7 +1100,6 @@ classdef GLASS_AI_APP < matlab.apps.AppBase
                         %show stain normalized image if done
                         if app.NORMALIZE_STAINS
                             normalizedPanel = nexttile(previewLayout);
-                            normalizedPanel.PlotBoxAspectRatioMode  = 'manual';
                             imshow(normalizedImage,'Parent',normalizedPanel)
                             title("Normalized Image")
                             axesList = [axesList normalizedPanel];
@@ -1111,7 +1109,6 @@ classdef GLASS_AI_APP < matlab.apps.AppBase
                         % show tumor segmentation map
                         if app.MAKE_SEGMENTATION_IMAGE
                             tumorSegmentationPanel = nexttile(previewLayout);
-                            tumorSegmentationPanel.PlotBoxAspectRatioMode  = 'manual';
                             imshow(segmentationImage,'Parent',tumorSegmentationPanel)
                             title("Tumor Segmentation");
                             axesList = [axesList tumorSegmentationPanel];
@@ -1120,7 +1117,6 @@ classdef GLASS_AI_APP < matlab.apps.AppBase
 
                         % show tumor grade map
                         gradeMapPanel = nexttile(previewLayout);
-                        gradeMapPanel.PlotBoxAspectRatioMode  = 'manual';
                         imshow(gradeImage, 'Parent',gradeMapPanel)
                         title("Tumor Grades")
                         axesList = [axesList gradeMapPanel];
@@ -1129,7 +1125,6 @@ classdef GLASS_AI_APP < matlab.apps.AppBase
                         % show max class probability map if requested
                         if app.MAKE_CONFIDENCE_MAP
                             maxClassProbabilityPanel = nexttile(previewLayout);
-                            maxClassProbabilityPanel.PlotBoxAspectRatioMode  = 'manual';
                             imshow(maxClassProbability,maxClassProbablityColorMap,'Parent',maxClassProbabilityPanel)
                             title("Predicted Class Probability")
                             colorBar = colorbar('Location','southoutside');
@@ -1143,7 +1138,6 @@ classdef GLASS_AI_APP < matlab.apps.AppBase
                         % show overall tumor grade map if requested
                         if app.ASSIGN_OVERALL_GRADES
                             overallGradeMapPanel = nexttile(previewLayout);
-                            overallGrademapPanel.PlotBoxAspectRatioMode  = 'manual';
                             imshow(overallTumorGradeImage,'Parent',overallGradeMapPanel)
                             title("Overall Tumor Grades")
                             axesList = [axesList overallGradeMapPanel];
@@ -2382,17 +2376,18 @@ classdef GLASS_AI_APP < matlab.apps.AppBase
             logfunctioncall(app,"finish")
         end % End function: getcolormap
 
-        function [fullFilePath, applyToAllFiles] = promptreplacexistingfile(app,fullFilePath,applyToAllFiles,oldEnd,newEnd)
+        function [fullFilePath, applyToAllFiles] = promptreplaceexistingfile(app,fullFilePath,applyToAllFiles,oldEnd,newEnd)
             arguments
-            app
-            fullFilePath {mustBeTextScalar}
-            applyToAllFiles string = ""
-            oldEnd {mustBeTextScalar} = ".tif"
-            newEnd {mustBeTextScalar} = "_new.tif"
+                app
+                fullFilePath {mustBeTextScalar}
+                applyToAllFiles string = ""
+                oldEnd {mustBeTextScalar} = ".tif"
+                newEnd {mustBeTextScalar} = "_new.tif"
             end
 
             %check if file exists, if so prompt to
             %delete and replace
+            
             if isfile(fullFilePath)
                 if applyToAllFiles == "overwrite"
                     replaceFile = 'Yes to all';
@@ -2403,7 +2398,8 @@ classdef GLASS_AI_APP < matlab.apps.AppBase
                     promptMessage = sprintf("%s already exits.\n Overwrite existing file?",fullFilePath);
                     replaceFile = uiconfirm(app.GLASSAIUIFigure,promptMessage,"Replace file?", ...
                         "Options",["Yes to all","Yes","No","No to all"], ...
-                        "DefaultOption",2);
+                        "DefaultOption","Yes",...
+                        "CancelOption","No");
                       replaceFile = string(replaceFile);
                 end
 
@@ -2421,11 +2417,15 @@ classdef GLASS_AI_APP < matlab.apps.AppBase
                         fullFilePath = replace(fullFilePath,oldEnd,newEnd);
                         fprintf("%s - %s %s\n", string(datetime),"Changed file name to",fullFilePath)
                         applyToAllFiles = "keep";
+                        % check that the new file doesn't already exist
+                        [fullFilePath, applyToAllFiles] = promptreplaceexistingfile(app,fullFilePath,applyToAllFiles,oldEnd,newEnd);
                     case "No"
                         fprintf("%s - %s %s\n", string(datetime),"User declined overwrite of existing",fullFilePath)
                         %append new to the end of the file name before .ext
-                        fullFilePath = replace(fullFilePath,oldEnd,newEnd);
                         fprintf("%s - %s %s\n", string(datetime),"Changed file name to",fullFilePath)
+                        fullFilePath = replace(fullFilePath,oldEnd,newEnd);
+                        %check that the new file doesn't already exist
+                        [fullFilePath, applyToAllFiles] = promptreplaceexistingfile(app,fullFilePath,applyToAllFiles,oldEnd,newEnd);
                 end %switch replaceFile
             end % if isfile(fullFilePath)
         end % function promptreplaceexistingfile
@@ -2860,6 +2860,10 @@ classdef GLASS_AI_APP < matlab.apps.AppBase
                 app.HemGreenInput.Value     app.EosGreenInput.Value
                 app.HemBlueInput.Value      app.EosBlueInput.Value
                 ];
+
+            fprintf("Stain normalization matrix:\n");
+            sprintf("[%0.4f %0.4f; %0.4f %0.4f; %0.4f %0.4f]",app.NORMALIZE_REF_STAINMATRIX(1,:),app.NORMALIZE_REF_STAINMATRIX(2,:),app.NORMALIZE_REF_STAINMATRIX(3,:))
+
             fprintf("%s:\t%.3f\n","Stain normalization hematoxylin reference concentation", app.HemConc.Value);
             fprintf("%s:\t%.3f\n","Stain normalization eosin reference concentation", app.EosConc.Value);
             app.NORMALIZATION_REF_CONC = [app.HemConc.Value, app.EosConc.Value];
