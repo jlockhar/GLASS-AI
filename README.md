@@ -7,6 +7,10 @@
 👩‍⚕️ Analysis by a clinical pathologist is the gold standard in this approach but may be difficult to obtain due to the cost and availability. 
 
 🤖 As an alternative, we developed a GLASS-AI to grade, segment, and analyze tumors in mouse models of lung adenocarcinoma. 
+<p align="center">
+	<img width="460" height="300" src="https://github.com/user-attachments/assets/4cfd2143-ce5e-45ca-8de1-e8e633e7c172">
+</p>
+
 
 ---
 
