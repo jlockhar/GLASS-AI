@@ -145,7 +145,7 @@ classdef GLASS_AI_APP < matlab.apps.AppBase
 
     properties (Access = private)
         % PROPERTIES %
-        GLASSAI_APP_VERSION = '2.2.0' % Version of GLASS-AI standalone app
+        GLASSAI_APP_VERSION = '2.1.1' % Version of GLASS-AI standalone app
         GLASS_AI_NET % Network object for machine learning model
         RESOURCE_DIR_PATH % Path to GLASS_AI_resources directory
         START_DIR % Path to starting directory in development/undeployed instances
@@ -347,10 +347,11 @@ classdef GLASS_AI_APP < matlab.apps.AppBase
                     fprintf("%s - %s %s\n",string(datetime),"Creating blockedImage from",app.currentFileNameExt)
                     %read image as blocked image. get index of target
                     %image resolution.
-                    [wholeImage, imageIndex, overviewIndex] = readimage(app,app.currentFilePath);
+                    [wholeImage, imageIndex] = readimage(app,app.currentFilePath);
                     xImagePixels = wholeImage.Size(imageIndex,2);
                     yImagePixels = wholeImage.Size(imageIndex,1);
                     zImagePixels = wholeImage.Size(imageIndex,3);
+                    fprintf("%s - %s %s\n",string(datetime),"Created blockedImage from",app.currentFileNameExt)
 
                 catch ME
                     % alert user that an error occured if not already done
@@ -366,7 +367,34 @@ classdef GLASS_AI_APP < matlab.apps.AppBase
                 end % end TRY: read input image
 
 
-                %% mask empty image patches using overview image layer
+                %% make overview image for stain estimation and tissue masking
+                statusupdate(app,"Creating overview image");
+                %check stop button status before proceeding
+                if app.StopAnalysisButton.Value == 1
+                    app.StopAnalysisButton.Text = "Stopped";
+                    fprintf("%s - %s\n",string(datetime),"ANALYSIS STOP REQUESTED BY USER. Returning control from runglassai().")
+                    return
+                end
+
+                %make low res overview image (1/16 scale).
+                if prod(wholeImage.Size(1:2)) > 100000000
+                fprintf("%s - %s %s\n",string(datetime),"Creating overview image of", app.currentFileNameExt)
+                overviewImage = makeMultiLevel2D(wholeImage,...
+                    Scales=0.125,...
+                    Adapter=images.blocked.PNGBlocks,...
+                    Interpolation="nearest",...
+                    UseParallel = true,...
+                    OutputLocation = fullfile(app.OUTPUT_PATH,'TempFolder','overviewImage'));
+                %make sure that the overview is at least 1 full block
+                overviewImage.BlockSize = min(overviewImage.Size,overviewImage.BlockSize);
+                fprintf("%s - %s %s\n",string(datetime),"Created overview image of", app.currentFileNameExt)
+                else
+                    fprintf("%s - %s %s %s\n",string(datetime),"Skipping overview image of", app.currentFileNameExt,"due to small image size")
+                    overviewImage = wholeImage;
+                end
+
+
+                %% mask empty image patchs
                 statusupdate(app,"Masking out empty patches");
                 %check stop button status before proceeding
                 if app.StopAnalysisButton.Value == 1
@@ -379,9 +407,8 @@ classdef GLASS_AI_APP < matlab.apps.AppBase
                 %Identify low luminosity pixels (i.e., tissue)
                 luminosityThreshold = 200;
                 fprintf("%s - %s %s %s%d\n",string(datetime),"Masking tissue pixels in", app.currentFileNameExt,"with luminosity <",luminosityThreshold)
-                tissueBlockMask = apply(wholeImage, @(bs)rgb2gray(bs.Data)<luminosityThreshold,...
-                    'UseParallel',true,...
-                    'Level', overviewIndex,...
+                tissueBlockMask = apply(overviewImage, @(bs)rgb2gray(bs.Data)<luminosityThreshold,...
+                    'UseParallel',true,...,
                     'OutputLocation',fullfile(app.OUTPUT_PATH,'TempFolder','tissueMask'));
                 fprintf("%s - %s %s\n",string(datetime),"Masked tissue pixels in", app.currentFileNameExt)
                 fprintf("%s - %s %s\n",string(datetime),"Gathering tissue mask for", app.currentFileNameExt)
@@ -424,7 +451,7 @@ classdef GLASS_AI_APP < matlab.apps.AppBase
                 
                     %estimate stain from overview image
                     fprintf("%s - %s %s\n",string(datetime),"Gathering overview image for", app.currentFileNameExt)
-                    gathered_overviewImage = gather(wholeImage,"Level",overviewIndex);
+                    gathered_overviewImage = gather(overviewImage);
                     fprintf("%s - %s %s\n",string(datetime),"Gathered overview image for", app.currentFileNameExt)
                     [stainMatrix, stainConc] = estimatestaining(app,gathered_overviewImage);
                     fprintf("%s - %s %s\n",string(datetime),"Estimated staining using overview image for", app.currentFileNameExt)
@@ -1155,48 +1182,64 @@ classdef GLASS_AI_APP < matlab.apps.AppBase
             %property in this application
             %https://raw.githubusercontent.com/jlockhar/GLASS-AI/main/GLASS-AI app/GLASS_AI_APP.m
             try
-                %fetch current version of the GLASS-AI app code from GitHub
-                gitData = webread("https://raw.githubusercontent.com/jlockhar/GLASS-AI/main/GLASS_AI_APP.m");
-                %extract version property and parse into major minor patch
-                versionPattern = regexpPattern("(?<=GLASSAI_APP_VERSION \= \')([0-9\.]+)(?=\')");
-                gitVersion = matlab.mpm.Version(string(extract(gitData,versionPattern)));
-                fprintf("%s: %s\n","Current GLASS-AI app version on GitHub",gitVersion.string);
-                app.VersionLabel.Tooltip = sprintf("%s: %s\n","Current GLASS-AI app version on GitHub",gitVersion.string);
+                if strfind(app.GLASSAI_APP_VERSION,"dev")
+                    app.StatusLabel.Text = sprintf("%s\n%s",app.StatusLabel.Text,"This is a development/unpublished version of the GLASS-AI app.");
+                else
+                    %fetch current version of the GLASS-AI app code from GitHub
+                    gitData = webread("https://raw.githubusercontent.com/jlockhar/GLASS-AI/main/GLASS_AI_APP.m");
+                    %extract version property and parse into major minor patch
+                    versionPattern = regexpPattern("(?<=GLASSAI_APP_VERSION \= \')([0-9\.]+)(?=\')");
+                    gitVersion = string(extract(gitData,versionPattern));
 
-                localVersion =  matlab.mpm.Version(app.GLASSAI_APP_VERSION);
-                %compare version numbers
-                if localVersion < gitVersion
-                    if localVersion.Major < gitVersion.Major
+                    fprintf("%s: %s\n","Current GLASS-AI app version on GitHub",gitVersion);
+                    app.VersionLabel.Tooltip = sprintf("%s: %s\n","Current GLASS-AI app version on GitHub",gitVersion);
+
+                    gitVersionMajor = extract(gitVersion,regexpPattern("(?<=^)[0-9]+(?=\.)"));
+                    gitVersionMinor = extract(gitVersion,regexpPattern("(?<=^[0-9]+\.)[0-9]+(?=\.)"));
+                    gitVersionPatch = extract(gitVersion,regexpPattern("(?<=^[0-9]+\.[0-9]+\.)[0-9]+(?=$)"));
+
+                    %parse major minor patch version from this app
+                    appVersionMajor = extract(app.GLASSAI_APP_VERSION,regexpPattern("(?<=^)[0-9]+(?=\.)"));
+                    appVersionMinor = extract(app.GLASSAI_APP_VERSION,regexpPattern("(?<=^[0-9]\.)[0-9]+(?=\.)"));
+                    appVersionPatch = extract(app.GLASSAI_APP_VERSION,regexpPattern("(?<=^[0-9]\.[0-9]\.)[0-9]+(?=$)"));
+
+                    %compare version numbers
+                    majorUpdateAvailable = str2double(appVersionMajor) < str2double(gitVersionMajor);
+                    minorUpdateAvailable = ~majorUpdateAvailable & str2double(appVersionMinor) < str2double(gitVersionMinor);
+                    patchUpdateAvailable = ~majorUpdateAvailable & ~minorUpdateAvailable & str2double(appVersionPatch) < str2double(gitVersionPatch);
+
+                    
+                    %prompt user to update the app if version is behind GitHub
+                    if majorUpdateAvailable
                         app.UpdateAvailableButton.BackgroundColor = [1 0 0];
                         app.UpdateAvailableButton.Tooltip = sprintf("A major version update (%s) is available for GLASS-AI! Click to get the installer for the latest version.",gitVersion);
                         app.UpdateAvailableButton.Visible = "on";
                         app.UpdateAvailableButton.Enable = "on";
-                    elseif localVersion.Minor < gitVersion.Minor
+                        app.StatusLabel.Text = sprintf("%s\n%s",app.StatusLabel.Text,"A major update is available for GLASS-AI.");
+                        return
+                    end
+                    if minorUpdateAvailable
                         app.UpdateAvailableButton.BackgroundColor = [1 1 0];
                         app.UpdateAvailableButton.Tooltip = sprintf("A minor version update (%s) is available for GLASS-AI! Click to get the installer for the latest version.",gitVersion);
                         app.UpdateAvailableButton.Visible = "on";
                         app.UpdateAvailableButton.Enable = "on";
-                    elseif localVersion.Patch < gitVersion.Minor
+                        app.StatusLabel.Text = sprintf("%s\n%s",app.StatusLabel.Text,"A minor update is available for GLASS-AI.");
+                        return
+                    end
+                    if patchUpdateAvailable
                         app.UpdateAvailableButton.BackgroundColor = [0 1 1];
                         app.UpdateAvailableButton.Tooltip = sprintf("A patch update (%s) is available for GLASS-AI! Click to get the installer for the latest version.",gitVersion);
                         app.UpdateAvailableButton.Visible = "on";
                         app.UpdateAvailableButton.Enable = "on";
-                    else
-                        %this should not be reachable
+                        app.StatusLabel.Text = sprintf("%s\n%s",app.StatusLabel.Text,"A patch update is available for GLASS-AI.");
+                        return
+                    else %app.GLASSAI_APP_VERSION == gitVersion
+                        %don't do anything if this is the latest version
+                        %app.StatusLabel.Text = sprintf("%s\n%s",app.StatusLabel.Text,"This is the latest version of the GLASS-AI app.")
                     end
-
-                elseif localVersion > gitVersion
-                    app.UpdateAvailableButton.BackgroundColor = [0.5 0.5 0.5];
-                    app.UpdateAvailableButton.Tooltip = sprintf("This version of GLASS-AI is ahead of the version on GitHub!");
-                    app.UpdateAvailableButton.Text = "DEV VERSION";
-                    app.UpdateAvailableButton.Visible = "on";
-                    app.UpdateAvailableButton.Enable = "off";
-                else
-                    % do nothing if the app is the current version on
-                    % GitHub
                 end
             catch ME
-                fprintf("%s: %s","There was an error during version comparison",ME.message);
+                fprintf("%s: %s","There was an during version comparison",ME.message);
                 app.StatusLabel.Text = sprintf("%s\n%s",app.StatusLabel.Text,"Could not check GLASS-AI app version against main branch on Github. Check for updates manually.");
             end
         end %End function: versioncheck
@@ -1259,71 +1302,82 @@ classdef GLASS_AI_APP < matlab.apps.AppBase
             end
         end % End function: logfunctioncall
 
-        function [wholeImage,imageIndex, overviewIndex] = readimage(app,filePath)
-            %   Reads input image as blockedImage. Use openslideread for
-            %   known WSI formats (i.e., .svs, .qptiff)
+                function [wholeImage,imageIndex] = readimage(app,filePath)
+            %   Reads input image. Will attempt to find 20x magnification
+            %   images in .svs files. Tif images are assumed to be at 20x
+            %   magnification with 0.5022 microns/pixel resolution.
+            %   Supported formats: tif , svs
             logfunctioncall(app,"start");
             % get image extension
             [~,fileName,fileExt] = fileparts(filePath);
             fileExt = lower(fileExt);
-    
+
             switch fileExt
                 case {'.tif', '.tiff','.jpeg','.jpg','.png'}
-                    % Read image file. 
-                    % Assumed to be in 20x magnification with a 0.5022 microns/pixel resolution
-                    wholeImage = blockedImage(filePath);
-                    wholeImage.BlockSize = [224 224];
+                    % Read tif file. Assumed to be in 20x magnification
+                    % with a 0.5022 microns/pixel resolution
                     imageIndex = 1;
+                    wholeImage = blockedImage(filePath);
                     fprintf("%s - %s %s\n",string(datetime),"Image loaded as blockedImage from",app.currentFileNameExt)
                     app.IMAGE_RESOLUTION = 0.5022;
                     fprintf("%s - %s %s %.3f %s\n",string(datetime),fileName,"is assumed to have a resolution of", ...
                         app.IMAGE_RESOLUTION,"microns per pixel")
-                    
-                    % make a 16x downsample overview for large images
-                    if prod(wholeImage.Size(imageIndex,1:2)) > 10^6
-                        fprintf("%s - %s %s\n",string(datetime),"Adding 16x downsample layer for large image")
-                        overviewImage = makeMultiLevel2D(wholeImage, Scales= 1/16);
-                        wholeImage = concatenateLevels(wholeImage,overviewImage);
-                        overviewIndex = 2;
-                    else
-                        overviewIndex = 1; % same as imageIndex
-                    end
 
-                case {'.svs','.qptiff'}
-                    % read image in using openslide reader
-                    imageInfo = openslideinfo(filePath);
-                    wholeImage = openslideread(filePath);
-                    wholeImage.BlockSize = [224 224];
-                    app.IMAGE_RESOLUTION = imageInfo.RawMetadata.openslide_mpp_x;
-                    imageIndex = 1;
-                    fprintf("%s - %s %s\n",string(datetime),"Image loaded as blockedImage from",app.currentFileNameExt)
-                    % find 20x image layer if not scanned at 20x
-                    if imageInfo.RawMetadata.openslide_objective_power == 20
-                        fprintf("%s - %s\n",string(datetime),"Image was scanned at 20x")
-                        imageIndex = 1;
-                    elseif imageInfo.RawMetadata.openslide_objective_power < 20
-                        fprintf("%s - %s\n",string(datetime),"ERROR: Image magnification is too low. Aborting analysis.")
-                        error('Image magnification is too low. Must be >= 20x.');
-                    else
-                        [imageIndex, imageDownsample] = findclosestdownsamplelevel(app,wholeImage,imageInfo.RawMetadata.openslide_objective_power/20);
-                        fprintf("%s - %s %d %s%d%s\n",string(datetime),"Image scanned at > 20X. Using layer", imageIndex, "(",imageDownsample,"x downsample) for analysis.")
+                case '.svs'
+                    % get image metadata to find 20x image layer
+                    [imageInfo] = getsvsinfo(app,filePath);
+
+                    % find the 20x images
+                    imageIndex = [imageInfo{:,5}] == 20;
+                    
+                    % use 20x scan if available
+                    has20XScan = nnz([imageInfo{imageIndex, 6}]=="source")==1;
+                    if has20XScan
+                        imageIndex = find([imageInfo{imageIndex, 6}] == "source");
+                    else% get the largest of the 20x images
+                        [~,imageIndex] = max([imageInfo{imageIndex, 1}]);
+                    end % End IF: has20xScan
+
+                    % read svs file
+                    [wholeImage] = blockedImage(filePath);
+                    app.IMAGE_RESOLUTION = imageInfo{imageIndex,4};
+                case '.qptiff' 
+                    % get image metadata to find 20x image layer
+                    qptiffInfo = getqptiffinfo(app,filePath);
+
+                    imageInfo = cell([length(qptiffInfo) 4]);
+                    %parse imageInfo into find highest resolution 20X image
+                    for imageLayer = 1:length(imageInfo)
+                        imageInfo{imageLayer,1} = qptiffInfo(imageLayer).Width;
+                        imageInfo{imageLayer,2} = qptiffInfo(imageLayer).Height;
+                        imageInfo{imageLayer,3} = imageLayer;
+                        imageInfo{imageLayer,6} = qptiffInfo(imageLayer).ImageDescription.ImageType;
                     end
                     
-                    % find 16x downsampled overview image (from 20x layer)
-                    targetDownsample = 2^(3+imageIndex);
-                    [overviewIndex, foundDownsample] = findclosestdownsamplelevel(app,wholeImage,targetDownsample);
-                    fprintf("%s - %s\n",string(datetime),"No 16x downsample (from 20X mag) layer found. Making new downsampled layer.")
-                    % make a new downsampled layer if none found
-                    if round(foundDownsample/targetDownsample) < 1
-                        fprintf("%s - %s\n",string(datetime),"No appropriate 16x downsample (from 20X mag) layer found. Making new downsampled layer.")
-                        existingLayerCount = wholeImage.NumLevels;
-                        overviewImage = makeMultiLevel(wholeImage,...
-                            Scales = 1/16);
-                        wholeImage = concatenateLevels(wholeImage, overviewImage);
-                        overviewIndex = existingLayerCount + 1;
-                    else
-                        fprintf("%s - %s %d%s\n",string(datetime),"16x downsample (from 20X mag) found in layer ", overviewIndex,".")
-                    end
+                    %get index of full resolution scan. This should be == 1
+                    % pull info for this for calculating downsampled image
+                    % info
+                    fullResScanIndex = find(matches([imageInfo{:,6}],"FullResolution"));
+                    imageInfo{fullResScanIndex,4} = qptiffInfo(fullResScanIndex).ImageDescription.ScanProfile.root.ScanResolution.PixelSizeMicrons;
+                    imageInfo{fullResScanIndex,5} = qptiffInfo(fullResScanIndex).ImageDescription.ScanProfile.root.ScanResolution.Magnification;
+                    imageInfo{fullResScanIndex,6} = "source";
+
+                    imageInfo = estimateimagemagnifications(app,imageInfo);
+
+                    % use 20x full resolution scan if available
+                    has20XScan = matches(qptiffInfo(fullResScanIndex).ImageDescription.Objective,"20x");
+                   
+                    if has20XScan
+                        imageIndex = fullResScanIndex;
+                        app.IMAGE_RESOLUTION = qptiffInfo(fullResScanIndex).ImageDescription.ScanProfile.root.ScanResolution.PixelSizeMicrons;
+                    else% get the largest of the 20x images
+                        index20XImage = find(imageInfo{:,5} == 20);
+                        [~,imageIndex] = max([imageInfo{index20XImage, 1}]);
+                    end % End IF: has20xScan
+
+                    % read qptiff file as blockedImage
+                    [wholeImage]=blockedImage(filePath);
+                    app.IMAGE_RESOLUTION = imageInfo{imageIndex,4};
                 otherwise % another filetype somehow gets loaded
                     fprintf("%s - %s %s\n",string(datetime),fileName,"is not a supported file format")
                     error('File format is not supported!');
@@ -1331,19 +1385,6 @@ classdef GLASS_AI_APP < matlab.apps.AppBase
             logfunctioncall(app,"finish");
         end % End function: readimage
 
-        function [closestLevel, closestDownsample] = findclosestdownsamplelevel(~, openslideImage, targetDownsample)
-            md = openslideinfo(openslideImage.Source).RawMetadata;
-            fn = fieldnames(md);
-            mask = ~cellfun('isempty', regexp(fn, '^openslide_level_(\d+)_downsample$','once'));
-            dsFields = fn(mask);
-            tokens = regexp(dsFields, '^openslide_level_(\d+)_downsample$','tokens');
-            levels = cellfun(@(t) str2double(t{1}), tokens);
-            downsamples = cellfun(@(f) md.(f), dsFields);
-            [~, idx] = min(abs(downsamples - targetDownsample));
-            closestLevel = levels(idx);       
-            closestDownsample = downsamples(idx); 
-        end % End function: findclosestdownsamplelevel
-        
         function [imageInfo] = getsvsinfo(app,pathToImage)
             % Read file header and return images size, resolution, and apparent magnification
             % from svs file
@@ -1532,10 +1573,6 @@ classdef GLASS_AI_APP < matlab.apps.AppBase
 
         function [stainMatrix, stainConc] = estimatestaining(app,inputImage)
 
-            [height, width, channels] = size(inputImage);
-            originalImage = inputImage;
-            inputImage = reshape(double(inputImage), [], 3);
-
             if app.REMOVE_PURE_COLORS
                 %set pure color pixels to white
                 redPoints = inputImage(:,1)==255 & inputImage(:,2)==0 & inputImage(:,3)==0;
@@ -1547,7 +1584,11 @@ classdef GLASS_AI_APP < matlab.apps.AppBase
                 blackPoints = inputImage(:,1)==0 & inputImage(:,2)==0 & inputImage(:,3)==0;
 
                 setTransparentPoints = any([redPoints greenPoints bluePoints yellowPoints magentaPoints cyanPoints blackPoints],2);
+                inputImage = reshape(double(inputImage), [], 3);
                 inputImage(setTransparentPoints,:) = 255;
+
+            else
+                inputImage = reshape(double(inputImage), [], 3);
             end
             % calculate optical density
             OD = -log((double(inputImage)+1)/app.NORMALIZE_IO);
@@ -1584,12 +1625,11 @@ classdef GLASS_AI_APP < matlab.apps.AppBase
             OD = OD';
             OD = stainMatrix \ OD;
             stainConc = prctile(OD, 99, 2);
-            
         end
 
         function normalizedImage = applystainnormalization(app,inputImage,inputStainMatrix,inputStainConc,options)
             arguments
-                app %unused but needed for arguments block
+                app
                 inputImage (:,:,3) uint8 %m-by-n RGB image
                 inputStainMatrix (3,2) double %3-by-2 matrix of stain absorbances
                 inputStainConc (2,1) double %2-by-1 vector of stain concentrations
@@ -3865,7 +3905,7 @@ classdef GLASS_AI_APP < matlab.apps.AppBase
             app.GradeMapScalingSlider.MajorTicks = [12.5 25 50 100];
             app.GradeMapScalingSlider.MajorTickLabels = {'1/8', '1/4', '1/2', 'FULL'};
             app.GradeMapScalingSlider.ValueChangedFcn = createCallbackFcn(app, @DiscreteSliderValueChanged, true);
-            app.GradeMapScalingSlider.MinorTicksMode = 'manual';
+            app.GradeMapScalingSlider.MinorTicks = [];
             app.GradeMapScalingSlider.Tooltip = {'Set the scaling factor used when generating the output tumor grade map. Default = 1/4'};
             app.GradeMapScalingSlider.Position = [134 208 150 3];
             app.GradeMapScalingSlider.Value = 25;
@@ -3882,7 +3922,7 @@ classdef GLASS_AI_APP < matlab.apps.AppBase
             app.SegmentationScalingSlider.MajorTicks = [12.5 25 50 100];
             app.SegmentationScalingSlider.MajorTickLabels = {'1/8', '1/4', '1/2', 'FULL'};
             app.SegmentationScalingSlider.ValueChangedFcn = createCallbackFcn(app, @DiscreteSliderValueChanged, true);
-            app.SegmentationScalingSlider.MinorTicksMode = 'manual';
+            app.SegmentationScalingSlider.MinorTicks = [];
             app.SegmentationScalingSlider.Tooltip = {'Set the scaling factor used when generating the output tumor segmentation map. Default = 1/2'};
             app.SegmentationScalingSlider.Position = [134 155 150 3];
             app.SegmentationScalingSlider.Value = 50;
@@ -3899,7 +3939,7 @@ classdef GLASS_AI_APP < matlab.apps.AppBase
             app.StainNormalizedImageScalingSlider.MajorTicks = [12.5 25 50 100];
             app.StainNormalizedImageScalingSlider.MajorTickLabels = {'1/8', '1/4', '1/2', 'FULL'};
             app.StainNormalizedImageScalingSlider.ValueChangedFcn = createCallbackFcn(app, @DiscreteSliderValueChanged, true);
-            app.StainNormalizedImageScalingSlider.MinorTicksMode = 'manual';
+            app.StainNormalizedImageScalingSlider.MinorTicks = [];
             app.StainNormalizedImageScalingSlider.Tooltip = {'Set the scaling factor used when generating the output stain normalized image. Default = FULL'};
             app.StainNormalizedImageScalingSlider.Position = [135 109 150 3];
             app.StainNormalizedImageScalingSlider.Value = 100;
@@ -3921,7 +3961,7 @@ classdef GLASS_AI_APP < matlab.apps.AppBase
             app.ConfidenceMapScalingSlider.Limits = [12.5 100];
             app.ConfidenceMapScalingSlider.MajorTicks = [12.5 25 50 100];
             app.ConfidenceMapScalingSlider.MajorTickLabels = {'1/8', '1/4', '1/2', 'FULL'};
-            app.ConfidenceMapScalingSlider.MinorTicksMode = 'manual';
+            app.ConfidenceMapScalingSlider.MinorTicks = [];
             app.ConfidenceMapScalingSlider.Tooltip = {'Set the scaling factor used when generating the maximum class confidence/probability map. '; 'Default = 1/4'};
             app.ConfidenceMapScalingSlider.Position = [137 58 150 3];
             app.ConfidenceMapScalingSlider.Value = 25;

@@ -24,7 +24,7 @@ end
                 inputImage = reshape(double(inputImage), [], 3);
             end
             % calculate optical density
-            OD = -log((inputImage + 1)/options.NORMALIZE_IO);
+            OD = -log((double(inputImage)+1)/double(options.NORMALIZE_IO));
 
             % remove transparent pixels from vector calculation
             ODHat = OD(~any(OD < options.NORMALIZE_BETA, 2), :);
