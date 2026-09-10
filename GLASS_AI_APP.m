@@ -145,7 +145,7 @@ classdef GLASS_AI_APP < matlab.apps.AppBase
 
     properties (Access = private)
         % PROPERTIES %
-        GLASSAI_APP_VERSION = '2.1.1' % Version of GLASS-AI standalone app
+        GLASSAI_APP_VERSION = '2.2.0' % Version of GLASS-AI standalone app
         GLASS_AI_NET % Network object for machine learning model
         RESOURCE_DIR_PATH % Path to GLASS_AI_resources directory
         START_DIR % Path to starting directory in development/undeployed instances
@@ -377,11 +377,11 @@ classdef GLASS_AI_APP < matlab.apps.AppBase
                 end
 
                 %make low res overview image (1/16 scale).
-                if prod(wholeImage.Size(1:2)) > 100000000
+                if prod(wholeImage.Size(1,1:2)) > 10^8
                 fprintf("%s - %s %s\n",string(datetime),"Creating overview image of", app.currentFileNameExt)
                 overviewImage = makeMultiLevel2D(wholeImage,...
-                    Scales=0.125,...
-                    Adapter=images.blocked.PNGBlocks,...
+                    Scales= 1/16,...
+                    Adapter = images.blocked.PNGBlocks,...
                     Interpolation="nearest",...
                     UseParallel = true,...
                     OutputLocation = fullfile(app.OUTPUT_PATH,'TempFolder','overviewImage'));
@@ -1182,33 +1182,46 @@ classdef GLASS_AI_APP < matlab.apps.AppBase
             %property in this application
             %https://raw.githubusercontent.com/jlockhar/GLASS-AI/main/GLASS-AI app/GLASS_AI_APP.m
             try
-                if strfind(app.GLASSAI_APP_VERSION,"dev")
-                    app.StatusLabel.Text = sprintf("%s\n%s",app.StatusLabel.Text,"This is a development/unpublished version of the GLASS-AI app.");
-                else
+
                     %fetch current version of the GLASS-AI app code from GitHub
                     gitData = webread("https://raw.githubusercontent.com/jlockhar/GLASS-AI/main/GLASS_AI_APP.m");
-                    %extract version property and parse into major minor patch
-                    versionPattern = regexpPattern("(?<=GLASSAI_APP_VERSION \= \')([0-9\.]+)(?=\')");
-                    gitVersion = string(extract(gitData,versionPattern));
+                    % extract version property and parse into major minor patch
+                    versionPattern = regexpPattern("(?<=GLASSAI_EDITOR_APP_VERSION \= \')([0-9\.]+)(?=\')");
+                    % assume single number is major version
+                    majorPattern = regexpPattern("(?<=^)[0-9]+(?=\.|$)");
+                    % do not require a patch version (i.e., major.minor)
+                    minorPattern = regexpPattern("(?<=^[0-9]+\.)[0-9]+(?=\.|$)");
+                    % allow for suffix flags after patch version
+                    patchPattern = regexpPattern("(?<=^[0-9]+\.[0-9]+\.)[0-9]+(?=$|\-)");
 
-                    fprintf("%s: %s\n","Current GLASS-AI app version on GitHub",gitVersion);
-                    app.VersionLabel.Tooltip = sprintf("%s: %s\n","Current GLASS-AI app version on GitHub",gitVersion);
+                    gitVersion = char(extract(gitData,versionPattern));
+                    % put GitHub version in app version tooltip
+                    app.VersionLabel.Tooltip = sprintf("%s: %s","Current GLASS-AI version on GitHub",gitVersion);
 
-                    gitVersionMajor = extract(gitVersion,regexpPattern("(?<=^)[0-9]+(?=\.)"));
-                    gitVersionMinor = extract(gitVersion,regexpPattern("(?<=^[0-9]+\.)[0-9]+(?=\.)"));
-                    gitVersionPatch = extract(gitVersion,regexpPattern("(?<=^[0-9]+\.[0-9]+\.)[0-9]+(?=$)"));
-
-                    %parse major minor patch version from this app
-                    appVersionMajor = extract(app.GLASSAI_APP_VERSION,regexpPattern("(?<=^)[0-9]+(?=\.)"));
-                    appVersionMinor = extract(app.GLASSAI_APP_VERSION,regexpPattern("(?<=^[0-9]\.)[0-9]+(?=\.)"));
-                    appVersionPatch = extract(app.GLASSAI_APP_VERSION,regexpPattern("(?<=^[0-9]\.[0-9]\.)[0-9]+(?=$)"));
-
-                    %compare version numbers
-                    majorUpdateAvailable = str2double(appVersionMajor) < str2double(gitVersionMajor);
-                    minorUpdateAvailable = ~majorUpdateAvailable & str2double(appVersionMinor) < str2double(gitVersionMinor);
-                    patchUpdateAvailable = ~majorUpdateAvailable & ~minorUpdateAvailable & str2double(appVersionPatch) < str2double(gitVersionPatch);
-
+                    % parse major.minor.patch version from GitHub version
+                    % replace zero if no subversion is found
+                    gitVersionMajor = str2double(extract(gitVersion,majorPattern));
+                    if isempty(gitVersionMajor); gitVersionMajor = 0 ; end
+                    gitVersionMinor = str2double(extract(gitVersion,minorPattern));
+                    if isempty(gitVersionMinor); gitVersionMinor = 0 ;  end
+                    gitVersionPatch = str2double(extract(gitVersion,patchPattern));
+                    if isempty(gitVersionPatch); gitVersionPatch = 0; end
                     
+                    %% check version of the local app
+                    % parse major.minor.patch version from local app
+                    appVersionMajor = str2double(extract(app.GLASSAI_APP_VERSION,majorPattern));
+                    if isempty(appVersionMajor); gitVersionMajor = 0 ; end
+                    appVersionMinor = str2double(extract(app.GLASSAI_APP_VERSION,minorPattern));
+                    if isempty(appVersionMinor); gitVersionMajor = 0 ; end
+                    appVersionPatch = str2double(extract(app.GLASSAI_APP_VERSION,patchPattern));
+                    if isempty(appVersionPatch); gitVersionMajor = 0 ; end
+
+                    %% compare version and prompt for update
+                    % compare version numbers
+                    majorUpdateAvailable = appVersionMajor < gitVersionMajor;
+                    minorUpdateAvailable = all([~majorUpdateAvailable appVersionMinor < gitVersionMinor]);
+                    patchUpdateAvailable = all([~majorUpdateAvailable ~minorUpdateAvailable appVersionPatch < gitVersionPatch]);
+
                     %prompt user to update the app if version is behind GitHub
                     if majorUpdateAvailable
                         app.UpdateAvailableButton.BackgroundColor = [1 0 0];
@@ -1216,28 +1229,22 @@ classdef GLASS_AI_APP < matlab.apps.AppBase
                         app.UpdateAvailableButton.Visible = "on";
                         app.UpdateAvailableButton.Enable = "on";
                         app.StatusLabel.Text = sprintf("%s\n%s",app.StatusLabel.Text,"A major update is available for GLASS-AI.");
-                        return
-                    end
-                    if minorUpdateAvailable
+                    elseif minorUpdateAvailable
                         app.UpdateAvailableButton.BackgroundColor = [1 1 0];
                         app.UpdateAvailableButton.Tooltip = sprintf("A minor version update (%s) is available for GLASS-AI! Click to get the installer for the latest version.",gitVersion);
                         app.UpdateAvailableButton.Visible = "on";
                         app.UpdateAvailableButton.Enable = "on";
                         app.StatusLabel.Text = sprintf("%s\n%s",app.StatusLabel.Text,"A minor update is available for GLASS-AI.");
-                        return
-                    end
-                    if patchUpdateAvailable
+                    elseif patchUpdateAvailable
                         app.UpdateAvailableButton.BackgroundColor = [0 1 1];
                         app.UpdateAvailableButton.Tooltip = sprintf("A patch update (%s) is available for GLASS-AI! Click to get the installer for the latest version.",gitVersion);
                         app.UpdateAvailableButton.Visible = "on";
                         app.UpdateAvailableButton.Enable = "on";
                         app.StatusLabel.Text = sprintf("%s\n%s",app.StatusLabel.Text,"A patch update is available for GLASS-AI.");
-                        return
                     else %app.GLASSAI_APP_VERSION == gitVersion
                         %don't do anything if this is the latest version
                         %app.StatusLabel.Text = sprintf("%s\n%s",app.StatusLabel.Text,"This is the latest version of the GLASS-AI app.")
                     end
-                end
             catch ME
                 fprintf("%s: %s","There was an during version comparison",ME.message);
                 app.StatusLabel.Text = sprintf("%s\n%s",app.StatusLabel.Text,"Could not check GLASS-AI app version against main branch on Github. Check for updates manually.");
@@ -1302,11 +1309,12 @@ classdef GLASS_AI_APP < matlab.apps.AppBase
             end
         end % End function: logfunctioncall
 
-                function [wholeImage,imageIndex] = readimage(app,filePath)
-            %   Reads input image. Will attempt to find 20x magnification
-            %   images in .svs files. Tif images are assumed to be at 20x
-            %   magnification with 0.5022 microns/pixel resolution.
-            %   Supported formats: tif , svs
+        function [wholeImage, imageIndex] = readimage(app,filePath)
+            %   Reads input image as blockedimage. 
+            %   Will attempt to find 20x magnification images in WSI files.
+            %   Tif images are assumed to be at 20x magnification with 
+            %   0.5022 microns/pixel resolution.
+            %   Supported WSI formats: .svs, .qptiff
             logfunctioncall(app,"start");
             % get image extension
             [~,fileName,fileExt] = fileparts(filePath);
@@ -1334,13 +1342,14 @@ classdef GLASS_AI_APP < matlab.apps.AppBase
                     has20XScan = nnz([imageInfo{imageIndex, 6}]=="source")==1;
                     if has20XScan
                         imageIndex = find([imageInfo{imageIndex, 6}] == "source");
-                    else% get the largest of the 20x images
+                    else % get the largest of the 20x images
                         [~,imageIndex] = max([imageInfo{imageIndex, 1}]);
                     end % End IF: has20xScan
 
                     % read svs file
                     [wholeImage] = blockedImage(filePath);
                     app.IMAGE_RESOLUTION = imageInfo{imageIndex,4};
+
                 case '.qptiff' 
                     % get image metadata to find 20x image layer
                     qptiffInfo = getqptiffinfo(app,filePath);
@@ -1378,6 +1387,7 @@ classdef GLASS_AI_APP < matlab.apps.AppBase
                     % read qptiff file as blockedImage
                     [wholeImage]=blockedImage(filePath);
                     app.IMAGE_RESOLUTION = imageInfo{imageIndex,4};
+
                 otherwise % another filetype somehow gets loaded
                     fprintf("%s - %s %s\n",string(datetime),fileName,"is not a supported file format")
                     error('File format is not supported!');
