@@ -145,7 +145,7 @@ classdef GLASS_AI_APP < matlab.apps.AppBase
 
     properties (Access = private)
         % PROPERTIES %
-        GLASSAI_APP_VERSION = '2.1.1' % Version of GLASS-AI standalone app
+        GLASSAI_APP_VERSION = '2.2.0' % Version of GLASS-AI standalone app
         GLASS_AI_NET % Network object for machine learning model
         RESOURCE_DIR_PATH % Path to GLASS_AI_resources directory
         START_DIR % Path to starting directory in development/undeployed instances
@@ -175,13 +175,13 @@ classdef GLASS_AI_APP < matlab.apps.AppBase
         MAKE_SEGMENTATION_IMAGE % Generate labeled tumor segmentation image
         OUTPUT_SEGMENTATION_IMAGE_SCALE % scaling applied to segmentation output image
         OUTPUT_NORMALIZED_IMAGE_SCALE % scaling applied to stain normalized output image
-        MAKE_CONFIDENCE_MAP % Output map of maximium activiation weight
+        MAKE_CONFIDENCE_MAP % Output map of maximum activation weight
         OUTPUT_CONFIDENCE_MAP_SCALE % scaling applied to predicted grade confidence map output image
         CONFIDENCE_MAP_COLOR % selected color map to use for making confidence map image
         PATCH_SIZE = [224, 224, 3]; % size of image patches given to neural network
         PATCH_SKIP_THRESHOLD % Patches with less than this amount of tissue will be skipped
         SMOOTH_METHOD % Select filter used for classification smoothing
-        SMOOTH_SIZE =[100 100]% Define filter size in pixels for classificiation smooting
+        SMOOTH_SIZE =[100 100]% Define filter size in pixels for classification smoothing
         SPLIT_IMAGE % Write image blocks to files to conserve memory
         NORMAL_ALVEOLI_COLOR % color of normal alveoli in grade map
         NORMAL_AIRWAY_COLOR % color of normal airway in grade map
@@ -213,7 +213,7 @@ classdef GLASS_AI_APP < matlab.apps.AppBase
         currentFilePath % Store path to image being analyzed
         logFileName % name of log file
         logFilePath % location of log file
-        ErrorAlertAlreadyCreated = false % Flag to store if an error has occured in a defined try block
+        ErrorAlertAlreadyCreated = false % Flag to store if an error has occurred in a defined try block
 
     end % End Properties
 
@@ -314,7 +314,7 @@ classdef GLASS_AI_APP < matlab.apps.AppBase
                 % write error message to logfile
                 fprintf("%s - %s %s\n",string(datetime),"[ERROR]: Analysis terminated due to error:", ME.message)
                 % update status window to alert user to error
-                app.StatusLabel.Text= sprintf("An error occured. Analysis Terminated.\n Check logfile for more details.");
+                app.StatusLabel.Text= sprintf("An error occurred. Analysis Terminated.\n Check logfile for more details.");
                 %rethrow error to stop execution
                 %- error reporting in RunButtonPushed callback
                 rethrow(ME)
@@ -354,14 +354,14 @@ classdef GLASS_AI_APP < matlab.apps.AppBase
                     fprintf("%s - %s %s\n",string(datetime),"Created blockedImage from",app.currentFileNameExt)
 
                 catch ME
-                    % alert user that an error occured if not already done
+                    % alert user that an error occurred if not already done
                     if ~app.ErrorAlertAlreadyCreated
-                        message_text = "An error occured while loading the input image from " + app.currentFileName + "." +...
+                        message_text = "An error occurred while loading the input image from " + app.currentFileName + "." +...
                             newline + "[ERROR MESSAGE]" + newline + ME.message;
                         uialert(app.GLASSAIUIFigure,message_text,"Image loading error");
                         app.ErrorAlertAlreadyCreated = true;
                     end
-                    fprintf("%s - %s %s\n",string(datetime),"[ERROR]: An error occured while loading", app.currentFileNameExt)
+                    fprintf("%s - %s %s\n",string(datetime),"[ERROR]: An error occurred while loading", app.currentFileNameExt)
                     %rethrow error to stop execution.
                     rethrow(ME);
                 end % end TRY: read input image
@@ -377,11 +377,11 @@ classdef GLASS_AI_APP < matlab.apps.AppBase
                 end
 
                 %make low res overview image (1/16 scale).
-                if prod(wholeImage.Size(1:2)) > 100000000
+                if prod(wholeImage.Size(1,1:2)) > 10^8
                 fprintf("%s - %s %s\n",string(datetime),"Creating overview image of", app.currentFileNameExt)
                 overviewImage = makeMultiLevel2D(wholeImage,...
-                    Scales=0.125,...
-                    Adapter=images.blocked.PNGBlocks,...
+                    Scales= 1/16,...
+                    Adapter = images.blocked.PNGBlocks,...
                     Interpolation="nearest",...
                     UseParallel = true,...
                     OutputLocation = fullfile(app.OUTPUT_PATH,'TempFolder','overviewImage'));
@@ -569,14 +569,14 @@ classdef GLASS_AI_APP < matlab.apps.AppBase
                     save(classificationOutputFilePath,'classifications', '-v7.3');
                     fprintf("%s - %s %s %s %s\n", string(datetime),"Saved raw classifications for",app.currentFileNameExt,"to",classificationOutputFilePath)
                 catch ME
-                    % alert user that an error occured if not already done
+                    % alert user that an error occurred if not already done
                     if ~app.ErrorAlertAlreadyCreated
                         app.ErrorAlertAlreadyCreated = true;
                         message_text = "GLASS-AI encountered an error while saving image classifications." + ...
                             newline + "[ERROR MESSAGE]" + newline + ME.message;
                         uialert(app.GLASSAIUIFigure,message_text,"Analysis error")
                     end
-                    fprintf("%s - %s %s %s %s\n",string(datetime),"[ERROR]: An error occured during saving of classes for",app.currentFileNameExt,"to",classificationOutputFilePath)
+                    fprintf("%s - %s %s %s %s\n",string(datetime),"[ERROR]: An error occurred during saving of classes for",app.currentFileNameExt,"to",classificationOutputFilePath)
                     %rethrow error to stop execution
                     rethrow(ME);
                 end % End TRY: save the classifications in the output folder in a .mat file
@@ -625,14 +625,14 @@ classdef GLASS_AI_APP < matlab.apps.AppBase
                     %components later.
                     clear tumorIdLabelMask
                 catch ME
-                    % alert user that an error occured if not already done
+                    % alert user that an error occurred if not already done
                     if ~app.ErrorAlertAlreadyCreated
                         app.ErrorAlertAlreadyCreated = true;
                         message_text = "GLASS-AI encountered an error while saving tumor label mask." + ...
                             newline + "[ERROR MESSAGE]" + newline + ME.message;
                         uialert(app.GLASSAIUIFigure,message_text,"Analysis error")
                     end
-                    fprintf("%s - %s %s\n",string(datetime),"[ERROR]: An error occured during saving of tumor label mask for",app.currentFileNameExt)
+                    fprintf("%s - %s %s\n",string(datetime),"[ERROR]: An error occurred during saving of tumor label mask for",app.currentFileNameExt)
                     %rethrow error to stop execution
                     rethrow(ME);
                 end
@@ -661,7 +661,7 @@ classdef GLASS_AI_APP < matlab.apps.AppBase
                 
                 individualTumorStatsFilePath = fullfile(app.OUTPUT_PATH,strcat(app.currentFileName, ".xlsx"));
                 [individualTumorStatsFilePath, overwriteAll] = promptreplaceexistingfile(app,individualTumorStatsFilePath,overwriteAll,".xlsx","_new.xlsx");
-                %get name of the indiviudal tumor stats file to use in the
+                %get name of the individual tumor stats file to use in the
                 %image level stats file
                 [~,imageName,~] = fileparts(individualTumorStatsFilePath);
                 fprintf("%s - %s %s %s %s\n", string(datetime),"Saving individual tumor stats for",app.currentFileNameExt,"to",individualTumorStatsFilePath)
@@ -750,20 +750,20 @@ classdef GLASS_AI_APP < matlab.apps.AppBase
                         %resize image for preview
                         resizeX = min(xImagePixels,5000);
                         resizeY = min(yImagePixels,5000);
-                        gradeImage = imresize(gradeImage,[resizeX,resizeY],'nearest');
-                        fprintf("%s - %s %.0f%s%.0f %s\n", string(datetime),"Resized tumor grade image to", resizeX,"x",resizeY, "for output preview")
+                        gradeImage = imresize(gradeImage,[resizeY resizeX],'nearest');
+                        fprintf("%s - %s %.0f%s%.0f %s\n", string(datetime),"Resized tumor grade image to", resizeY,"x",resizeX, "for output preview")
                     else
                         clear gradeImage;
                     end % End IF: app.OUTPUT_IMAGE_PREVIEW
                 catch ME
-                    % alert user that an error occured if not already done
+                    % alert user that an error occurred if not already done
                     if ~app.ErrorAlertAlreadyCreated
                         app.ErrorAlertAlreadyCreated = true;
                         message_text = "GLASS-AI encountered an error during tumor grade image creation." + ...
                             newline + "[ERROR MESSAGE]" + newline + ME.message;
                         uialert(app.GLASSAIUIFigure,message_text,"Analysis error")
                     end
-                    fprintf("%s - %s %s %s\n",string(datetime),"[ERROR]: An error occured during tumor grade image creation for",app.currentFileNameExt)
+                    fprintf("%s - %s %s %s\n",string(datetime),"[ERROR]: An error occurred during tumor grade image creation for",app.currentFileNameExt)
                     %rethrow error to stop execution
                     rethrow(ME);
                 end % End TRY: make tumor grade image
@@ -794,14 +794,14 @@ classdef GLASS_AI_APP < matlab.apps.AppBase
                         fprintf("%s - %s %s %s %s\n", string(datetime),"Saved overall tumor grade mask for",app.currentFileNameExt,"to",overallTumorGradeOutputFilePath)
 
                     catch ME
-                        % alert user that an error occured if not already done
+                        % alert user that an error occurred if not already done
                         if ~app.ErrorAlertAlreadyCreated
                             app.ErrorAlertAlreadyCreated = true;
                             message_text = "GLASS-AI encountered an error while saving overall tumor grade mask." + ...
                                 newline + "[ERROR MESSAGE]" + newline + ME.message;
                             uialert(app.GLASSAIUIFigure,message_text,"Analysis error")
                         end
-                        fprintf("%s - %s %s\n",string(datetime),"[ERROR]: An error occured during saving of overall tumor grade mask for",app.currentFileNameExt)
+                        fprintf("%s - %s %s\n",string(datetime),"[ERROR]: An error occurred during saving of overall tumor grade mask for",app.currentFileNameExt)
                         %rethrow error to stop execution
                         rethrow(ME);
                     end % End TRY: save overall tumor grade mask to file
@@ -840,28 +840,28 @@ classdef GLASS_AI_APP < matlab.apps.AppBase
                         if app.OUTPUT_IMAGE_PREVIEW
                             resizeX = min(xImagePixels,5000);
                             resizeY = min(yImagePixels,5000);
-                            overallTumorGradeImage = imresize(overallTumorGradeImage,[resizeX,resizeY],'nearest');
-                            fprintf("%s - %s %.0f%s%.0f %s\n", string(datetime),"Resized overall tumor grade image to", resizeX,"x",resizeY, "for output preview")
+                            overallTumorGradeImage = imresize(overallTumorGradeImage,[resizeY resizeX],'nearest');
+                            fprintf("%s - %s %.0f%s%.0f %s\n", string(datetime),"Resized overall tumor grade image to", resizeY,"x",resizeX, "for output preview")
                         else
                             clear overallTumorGradeImage;
                         end % End IF: app.OUTPUT_IMAGE_PREVIEW
 
                     catch ME
-                        % alert user that an error occured if not already done
+                        % alert user that an error occurred if not already done
                         if ~app.ErrorAlertAlreadyCreated
                             app.ErrorAlertAlreadyCreated = true;
                             message_text = "GLASS-AI encountered an error during overall tumor grade image creation." + ...
                                 newline + "[ERROR MESSAGE]" + newline + ME.message;
                             uialert(app.GLASSAIUIFigure,message_text,"Analysis error")
                         end
-                        fprintf("%s - %s %s %s\n",string(datetime),"[ERROR]: An error occured during overall tumor grade image creation for",app.currentFileNameExt)
+                        fprintf("%s - %s %s %s\n",string(datetime),"[ERROR]: An error occurred during overall tumor grade image creation for",app.currentFileNameExt)
                         %rethrow error to stop execution
                         rethrow(ME);
                     end % End TRY: make overall tumor grade image if requested
                 end %if: app.ASSIGN_OVERALL_GRADES
 
                 %Reduce segmentedTumorMask size to requested output scale
-                %of semgentation image or clear from memory to reduce load
+                %of segmentation image or clear from memory to reduce load
                 if app.MAKE_SEGMENTATION_IMAGE
                     segmentedTumorMask = imresize(segmentedTumorMask,app.OUTPUT_SEGMENTATION_IMAGE_SCALE);
                 else
@@ -922,20 +922,20 @@ classdef GLASS_AI_APP < matlab.apps.AppBase
                         %Resize or clear segmentationImage to 
                         %reduce memory load
                         if app.OUTPUT_IMAGE_PREVIEW
-                            segmentationImage = imresize(segmentationImage, [resizeX resizeY],'nearest');
-                            fprintf("%s - %s %.0f%s%.0f %s\n", string(datetime),"Resized tumor segmentation image to", resizeX,"x",resizeY, "for output preview")
+                            segmentationImage = imresize(segmentationImage, [resizeY resizeX],'nearest');
+                            fprintf("%s - %s %.0f%s%.0f %s\n", string(datetime),"Resized tumor segmentation image to", resizeY,"x",resizeX, "for output preview")
                         else
                             clear segmentationImage;
                         end % End IF: app.OUTPUT_IMAGE_PREVIEW
                     catch ME
-                        % alert user that an error occured if not already done
+                        % alert user that an error occurred if not already done
                         if ~app.ErrorAlertAlreadyCreated
                             app.ErrorAlertAlreadyCreated = true;
                             message_text = "GLASS-AI encountered an error during tumor segmentation image creation." + ...
                                 newline + "[ERROR MESSAGE]" + newline + ME.message;
                             uialert(app.GLASSAIUIFigure,message_text,"Analysis error")
                         end
-                        fprintf("%s - %s %s %s\n",string(datetime),"[ERROR]: An error occured during tumor segmentation image creation for",app.currentFileNameExt)
+                        fprintf("%s - %s %s %s\n",string(datetime),"[ERROR]: An error occurred during tumor segmentation image creation for",app.currentFileNameExt)
                         %rethrow error to stop execution
                         rethrow(ME);
                     end % End TRY: make tumor segmentation image if requested
@@ -970,7 +970,7 @@ classdef GLASS_AI_APP < matlab.apps.AppBase
                             write(normalizedImage,normalizedImageFilePath,'Adapter',adapter);
                             fprintf("%s - %s %s %s %s\n", string(datetime),"Finished saving stain normalized image for", app.currentFileNameExt, "to",normalizedImageFilePath)
                         catch ME
-                            % alert user that an error occured if not already done
+                            % alert user that an error occurred if not already done
                             if ~app.ErrorAlertAlreadyCreated
                                 app.ErrorAlertAlreadyCreated = true;
                                 message_text = "GLASS-AI encountered an error while saving stain normalized image." + ...
@@ -978,7 +978,7 @@ classdef GLASS_AI_APP < matlab.apps.AppBase
                                 uialert(app.GLASSAIUIFigure,message_text,"Analysis error")
                             end
 
-                            fprintf("%s - %s %s %s\n",string(datetime),"[ERROR]: An error occured during normalized H&E image output for",app.currentFileNameExt)
+                            fprintf("%s - %s %s %s\n",string(datetime),"[ERROR]: An error occurred during normalized H&E image output for",app.currentFileNameExt)
                             %rethrow error to stop execution
                             rethrow(ME);
                         end % End TRY: make stain normalization image
@@ -1001,7 +1001,7 @@ classdef GLASS_AI_APP < matlab.apps.AppBase
                         statusupdate(app,"Making class confidence map")
                         %generate 256 element colormap based on selected
                         %color palette
-                        maxClassProbablityColorMap = getcolormap(app);
+                        maxClassProbabilityColorMap = getcolormap(app);
 
                         %gather blockedImage for saving
                         fprintf("%s - %s %s\n", string(datetime),"Gathering max class probility map of", app.currentFileNameExt)
@@ -1015,8 +1015,8 @@ classdef GLASS_AI_APP < matlab.apps.AppBase
                         % resize to user defined scale and apply colormap
                         maxClassProbability = imresize(maxClassProbability,app.OUTPUT_CONFIDENCE_MAP_SCALE,'nearest');
 
-                        %apply user-selected colormap to maxClassProbablity
-                        maxClassProbability = ind2rgb(maxClassProbability,maxClassProbablityColorMap);
+                        %apply user-selected colormap to maxClassProbability
+                        maxClassProbability = ind2rgb(maxClassProbability,maxClassProbabilityColorMap);
                         %convert to uint8 RGB image
                         maxClassProbability = uint8(maxClassProbability*255);
 
@@ -1028,27 +1028,27 @@ classdef GLASS_AI_APP < matlab.apps.AppBase
                             writetiff(app,maxClassProbability,maxClassProbabilityImageFilePath);
                             fprintf("%s - %s %s %s %s %s\n", string(datetime),"Saved max probability map for", app.currentFileNameExt, "to",maxClassProbabilityImageFilePath,"using writetiff")
                         else
-                            imwrite(maxClassProbability,maxClassProbablityColorMap,maxClassProbabilityImageFilePath,'tif','Compression','lzw');
+                            imwrite(maxClassProbability,maxClassProbabilityColorMap,maxClassProbabilityImageFilePath,'tif','Compression','lzw');
                             fprintf("%s - %s %s %s %s %s\n", string(datetime),"Saved max probability map for", app.currentFileNameExt, "to",maxClassProbabilityImageFilePath,"using imwrite with LZW compression")
                         end
 
                         %Resize or clear maxClassProbability to 
                         %reduce memory load
                         if app.OUTPUT_IMAGE_PREVIEW
-                            maxClassProbability = imresize(maxClassProbability, [resizeX resizeY],'nearest');
+                            maxClassProbability = imresize(maxClassProbability, [resizeY resizeX],'nearest');
                         else
                             clear maxClassProbability
                         end
                     end % End IF: app.MAKE_CONFIDENCE_MAP
                 catch ME
-                    % alert user that an error occured if not already done
+                    % alert user that an error occurred if not already done
                     if ~app.ErrorAlertAlreadyCreated
                         app.ErrorAlertAlreadyCreated = true;
                         message_text = "GLASS-AI encountered an error during class prediction probability image creation." + ...
                             newline + "[ERROR MESSAGE]" + newline + ME.message;
                         uialert(app.GLASSAIUIFigure,message_text,"Analysis error")
                     end
-                    fprintf("%s - %s %s %s\n",string(datetime),"[ERROR]: An error occured during class prediction probability image creation for",app.currentFileNameExt)
+                    fprintf("%s - %s %s %s\n",string(datetime),"[ERROR]: An error occurred during class prediction probability image creation for",app.currentFileNameExt)
                     %rethrow error to stop execution
                     rethrow(ME);
                 end
@@ -1073,18 +1073,18 @@ classdef GLASS_AI_APP < matlab.apps.AppBase
                         fprintf("%s - %s %s\n", string(datetime),"Gathering input image for previewing", app.currentFileNameExt)
                         wholeImage = gather(wholeImage,'Level',imageIndex);
                         fprintf("%s - %s %s\n", string(datetime),"Finished gathering input image for previewing", app.currentFileNameExt)
-                        wholeImage = imresize(wholeImage,[resizeX resizeY],'nearest');
+                        wholeImage = imresize(wholeImage,[resizeY resizeX],'nearest');
                         fprintf("%s - %s %.2f%s\n", string(datetime),"Resized input H&E image to", app.OUTPUT_NORMALIZED_IMAGE_SCALE,"x")
 
                         if app.NORMALIZE_STAINS
                             fprintf("%s - %s %s\n", string(datetime),"Gathering stain normalized image for previewing", app.currentFileNameExt)
                             normalizedImage = gather(normalizedImage);
                             fprintf("%s - %s %s\n", string(datetime),"Finished gathering stain normalized image for previewing", app.currentFileNameExt)
-                            normalizedImage = imresize(normalizedImage,[resizeX resizeY],'nearest');
+                            normalizedImage = imresize(normalizedImage,[resizeY resizeX],'nearest');
                             fprintf("%s - %s %.2f%s\n", string(datetime),"Resized normalized H&E image to", app.OUTPUT_NORMALIZED_IMAGE_SCALE,"x")
                         end
                         %% display preview images
-                        % set up figure environement for image display
+                        % set up figure environment for image display
                         previewFigureName = sprintf("GLASS-AI Results Preview - %s",app.currentFileNameExt);
                         previewFigure = figure('Name',previewFigureName);
                         previewLayout = tiledlayout(previewFigure,"flow",'TileSpacing','Compact','Padding',"compact");
@@ -1125,7 +1125,7 @@ classdef GLASS_AI_APP < matlab.apps.AppBase
                         % show max class probability map if requested
                         if app.MAKE_CONFIDENCE_MAP
                             maxClassProbabilityPanel = nexttile(previewLayout);
-                            imshow(maxClassProbability,maxClassProbablityColorMap,'Parent',maxClassProbabilityPanel)
+                            imshow(maxClassProbability,maxClassProbabilityColorMap,'Parent',maxClassProbabilityPanel)
                             title("Predicted Class Probability")
                             colorBar = colorbar('Location','southoutside');
                             % create and label 5 ticks on bar from 0 - 1
@@ -1149,14 +1149,14 @@ classdef GLASS_AI_APP < matlab.apps.AppBase
 
                     end % End IF: app.OUTPUT_IMAGE_PREVIEW
                 catch ME
-                    % alert user that an error occured if not already done
+                    % alert user that an error occurred if not already done
                     if ~app.ErrorAlertAlreadyCreated
                         app.ErrorAlertAlreadyCreated = true;
                         message_text = "GLASS-AI encountered an error while making image previews." + ...
                             newline + "[ERROR MESSAGE]" + newline + ME.message;
                         uialert(app.GLASSAIUIFigure,message_text,"Analysis error")
                     end
-                    fprintf("%s - %s %s %s\n",string(datetime),"[ERROR]: An error occured while making output image preview figure for",app.currentFileNameExt)
+                    fprintf("%s - %s %s %s\n",string(datetime),"[ERROR]: An error occurred while making output image preview figure for",app.currentFileNameExt)
                     %rethrow error to stop execution
                     rethrow(ME);
                 end % End TRY: image preview
@@ -1167,7 +1167,7 @@ classdef GLASS_AI_APP < matlab.apps.AppBase
                 % write error message to logfile
                 fprintf("%s - %s %s\n",string(datetime),"[ERROR]: Analysis terminated due to error:", ME.message)
                 % update status window to alert user to error
-                app.StatusLabel.Text= sprintf("An error occured. Analysis Terminated.\n Check logfile for more details.");
+                app.StatusLabel.Text= sprintf("An error occurred. Analysis Terminated.\n Check logfile for more details.");
                 %rethrow error to stop execution
                 %- error reporting in RunButtonPushed callback
                 rethrow(ME)
@@ -1176,39 +1176,52 @@ classdef GLASS_AI_APP < matlab.apps.AppBase
 
 
         function versioncheck(app)
-            %Check for updated version of GLASS-AI standalone app on Github
+            %Check for updated version of GLASS-AI standalone app on GitHub
             %Look in the raw code of the main branch for the version
-            %property. Extract using regexexp and compare to version
+            %property. Extract using regexp and compare to version
             %property in this application
             %https://raw.githubusercontent.com/jlockhar/GLASS-AI/main/GLASS-AI app/GLASS_AI_APP.m
             try
-                if strfind(app.GLASSAI_APP_VERSION,"dev")
-                    app.StatusLabel.Text = sprintf("%s\n%s",app.StatusLabel.Text,"This is a development/unpublished version of the GLASS-AI app.");
-                else
+
                     %fetch current version of the GLASS-AI app code from GitHub
                     gitData = webread("https://raw.githubusercontent.com/jlockhar/GLASS-AI/main/GLASS_AI_APP.m");
-                    %extract version property and parse into major minor patch
-                    versionPattern = regexpPattern("(?<=GLASSAI_APP_VERSION \= \')([0-9\.]+)(?=\')");
-                    gitVersion = string(extract(gitData,versionPattern));
+                    % extract version property and parse into major minor patch
+                    versionPattern = regexpPattern("(?<=GLASSAI_EDITOR_APP_VERSION \= \')([0-9\.]+)(?=\')");
+                    % assume single number is major version
+                    majorPattern = regexpPattern("(?<=^)[0-9]+(?=\.|$)");
+                    % do not require a patch version (i.e., major.minor)
+                    minorPattern = regexpPattern("(?<=^[0-9]+\.)[0-9]+(?=\.|$)");
+                    % allow for suffix flags after patch version
+                    patchPattern = regexpPattern("(?<=^[0-9]+\.[0-9]+\.)[0-9]+(?=$|\-)");
 
-                    fprintf("%s: %s\n","Current GLASS-AI app version on GitHub",gitVersion);
-                    app.VersionLabel.Tooltip = sprintf("%s: %s\n","Current GLASS-AI app version on GitHub",gitVersion);
+                    gitVersion = char(extract(gitData,versionPattern));
+                    % put GitHub version in app version tooltip
+                    app.VersionLabel.Tooltip = sprintf("%s: %s","Current GLASS-AI version on GitHub",gitVersion);
 
-                    gitVersionMajor = extract(gitVersion,regexpPattern("(?<=^)[0-9]+(?=\.)"));
-                    gitVersionMinor = extract(gitVersion,regexpPattern("(?<=^[0-9]+\.)[0-9]+(?=\.)"));
-                    gitVersionPatch = extract(gitVersion,regexpPattern("(?<=^[0-9]+\.[0-9]+\.)[0-9]+(?=$)"));
-
-                    %parse major minor patch version from this app
-                    appVersionMajor = extract(app.GLASSAI_APP_VERSION,regexpPattern("(?<=^)[0-9]+(?=\.)"));
-                    appVersionMinor = extract(app.GLASSAI_APP_VERSION,regexpPattern("(?<=^[0-9]\.)[0-9]+(?=\.)"));
-                    appVersionPatch = extract(app.GLASSAI_APP_VERSION,regexpPattern("(?<=^[0-9]\.[0-9]\.)[0-9]+(?=$)"));
-
-                    %compare version numbers
-                    majorUpdateAvailable = str2double(appVersionMajor) < str2double(gitVersionMajor);
-                    minorUpdateAvailable = ~majorUpdateAvailable & str2double(appVersionMinor) < str2double(gitVersionMinor);
-                    patchUpdateAvailable = ~majorUpdateAvailable & ~minorUpdateAvailable & str2double(appVersionPatch) < str2double(gitVersionPatch);
-
+                    % parse major.minor.patch version from GitHub version
+                    % replace zero if no subversion is found
+                    gitVersionMajor = str2double(extract(gitVersion,majorPattern));
+                    if isempty(gitVersionMajor); gitVersionMajor = 0 ; end
+                    gitVersionMinor = str2double(extract(gitVersion,minorPattern));
+                    if isempty(gitVersionMinor); gitVersionMinor = 0 ;  end
+                    gitVersionPatch = str2double(extract(gitVersion,patchPattern));
+                    if isempty(gitVersionPatch); gitVersionPatch = 0; end
                     
+                    %% check version of the local app
+                    % parse major.minor.patch version from local app
+                    appVersionMajor = str2double(extract(app.GLASSAI_APP_VERSION,majorPattern));
+                    if isempty(appVersionMajor); gitVersionMajor = 0 ; end
+                    appVersionMinor = str2double(extract(app.GLASSAI_APP_VERSION,minorPattern));
+                    if isempty(appVersionMinor); gitVersionMajor = 0 ; end
+                    appVersionPatch = str2double(extract(app.GLASSAI_APP_VERSION,patchPattern));
+                    if isempty(appVersionPatch); gitVersionMajor = 0 ; end
+
+                    %% compare version and prompt for update
+                    % compare version numbers
+                    majorUpdateAvailable = appVersionMajor < gitVersionMajor;
+                    minorUpdateAvailable = all([~majorUpdateAvailable appVersionMinor < gitVersionMinor]);
+                    patchUpdateAvailable = all([~majorUpdateAvailable ~minorUpdateAvailable appVersionPatch < gitVersionPatch]);
+
                     %prompt user to update the app if version is behind GitHub
                     if majorUpdateAvailable
                         app.UpdateAvailableButton.BackgroundColor = [1 0 0];
@@ -1216,30 +1229,24 @@ classdef GLASS_AI_APP < matlab.apps.AppBase
                         app.UpdateAvailableButton.Visible = "on";
                         app.UpdateAvailableButton.Enable = "on";
                         app.StatusLabel.Text = sprintf("%s\n%s",app.StatusLabel.Text,"A major update is available for GLASS-AI.");
-                        return
-                    end
-                    if minorUpdateAvailable
+                    elseif minorUpdateAvailable
                         app.UpdateAvailableButton.BackgroundColor = [1 1 0];
                         app.UpdateAvailableButton.Tooltip = sprintf("A minor version update (%s) is available for GLASS-AI! Click to get the installer for the latest version.",gitVersion);
                         app.UpdateAvailableButton.Visible = "on";
                         app.UpdateAvailableButton.Enable = "on";
                         app.StatusLabel.Text = sprintf("%s\n%s",app.StatusLabel.Text,"A minor update is available for GLASS-AI.");
-                        return
-                    end
-                    if patchUpdateAvailable
+                    elseif patchUpdateAvailable
                         app.UpdateAvailableButton.BackgroundColor = [0 1 1];
                         app.UpdateAvailableButton.Tooltip = sprintf("A patch update (%s) is available for GLASS-AI! Click to get the installer for the latest version.",gitVersion);
                         app.UpdateAvailableButton.Visible = "on";
                         app.UpdateAvailableButton.Enable = "on";
                         app.StatusLabel.Text = sprintf("%s\n%s",app.StatusLabel.Text,"A patch update is available for GLASS-AI.");
-                        return
                     else %app.GLASSAI_APP_VERSION == gitVersion
                         %don't do anything if this is the latest version
                         %app.StatusLabel.Text = sprintf("%s\n%s",app.StatusLabel.Text,"This is the latest version of the GLASS-AI app.")
                     end
-                end
             catch ME
-                fprintf("%s: %s","There was an during version comparison",ME.message);
+                fprintf("%s: %s","There was an error during version comparison",ME.message);
                 app.StatusLabel.Text = sprintf("%s\n%s",app.StatusLabel.Text,"Could not check GLASS-AI app version against main branch on Github. Check for updates manually.");
             end
         end %End function: versioncheck
@@ -1302,11 +1309,12 @@ classdef GLASS_AI_APP < matlab.apps.AppBase
             end
         end % End function: logfunctioncall
 
-                function [wholeImage,imageIndex] = readimage(app,filePath)
-            %   Reads input image. Will attempt to find 20x magnification
-            %   images in .svs files. Tif images are assumed to be at 20x
-            %   magnification with 0.5022 microns/pixel resolution.
-            %   Supported formats: tif , svs
+        function [wholeImage, imageIndex] = readimage(app,filePath)
+            %   Reads input image as blockedimage. 
+            %   Will attempt to find 20x magnification images in WSI files.
+            %   Tif images are assumed to be at 20x magnification with 
+            %   0.5022 microns/pixel resolution.
+            %   Supported WSI formats: .svs, .qptiff
             logfunctioncall(app,"start");
             % get image extension
             [~,fileName,fileExt] = fileparts(filePath);
@@ -1334,13 +1342,14 @@ classdef GLASS_AI_APP < matlab.apps.AppBase
                     has20XScan = nnz([imageInfo{imageIndex, 6}]=="source")==1;
                     if has20XScan
                         imageIndex = find([imageInfo{imageIndex, 6}] == "source");
-                    else% get the largest of the 20x images
+                    else % get the largest of the 20x images
                         [~,imageIndex] = max([imageInfo{imageIndex, 1}]);
                     end % End IF: has20xScan
 
                     % read svs file
                     [wholeImage] = blockedImage(filePath);
                     app.IMAGE_RESOLUTION = imageInfo{imageIndex,4};
+
                 case '.qptiff' 
                     % get image metadata to find 20x image layer
                     qptiffInfo = getqptiffinfo(app,filePath);
@@ -1378,6 +1387,7 @@ classdef GLASS_AI_APP < matlab.apps.AppBase
                     % read qptiff file as blockedImage
                     [wholeImage]=blockedImage(filePath);
                     app.IMAGE_RESOLUTION = imageInfo{imageIndex,4};
+
                 otherwise % another filetype somehow gets loaded
                     fprintf("%s - %s %s\n",string(datetime),fileName,"is not a supported file format")
                     error('File format is not supported!');
@@ -1502,7 +1512,7 @@ classdef GLASS_AI_APP < matlab.apps.AppBase
                 imageInfo = estimateimagemagnifications(app,imageInfo);
 
             catch ME
-                % alert user that an error occured if not already done
+                % alert user that an error occurred if not already done
                 if ~app.ErrorAlertAlreadyCreated
                     app.ErrorAlertAlreadyCreated = true;
                     message_text = "GLASS-AI encountered an error while getting info from svs file:" + app.currentFileNameExt+ ...
@@ -1510,7 +1520,7 @@ classdef GLASS_AI_APP < matlab.apps.AppBase
                         newline + ME.message;
                     uialert(app.GLASSAIUIFigure,message_text,"I/O error")
                 end
-                fprintf("%s - %s %s\n",string(datetime),"[ERROR]: An error occured while getting info from", app.currentFileNameExt)
+                fprintf("%s - %s %s\n",string(datetime),"[ERROR]: An error occurred while getting info from", app.currentFileNameExt)
                 %rethrow error to stop execution
                 rethrow(ME);
             end % end TRY: error handling
@@ -1793,7 +1803,7 @@ classdef GLASS_AI_APP < matlab.apps.AppBase
                 fprintf("%s - %s: %s\n",string(datetime),"SMOOTHING","Converted smoothed classifications back to uint8")
 
             catch ME
-                % alert user that an error occured if not already done
+                % alert user that an error occurred if not already done
                 if ~app.ErrorAlertAlreadyCreated
                     app.ErrorAlertAlreadyCreated = true;
                     message_text = "GLASS-AI encountered an error during patch smoothing." + ...
@@ -2090,14 +2100,14 @@ classdef GLASS_AI_APP < matlab.apps.AppBase
 
                 fprintf("%s - %s %s\n",string(datetime),"Saved individual tumor stats for",app.currentFileNameExt)
             catch ME
-                % alert user that an error occured if not already done
+                % alert user that an error occurred if not already done
                 if ~app.ErrorAlertAlreadyCreated
                     app.ErrorAlertAlreadyCreated = true;
                     message_text = "GLASS-AI encountered an error during individual tumor analysis." + ...
                         newline + "[ERROR MESSAGE]" + newline + ME.message;
                     uialert(app.GLASSAIUIFigure,message_text,"Analysis error")
                 end
-                fprintf("%s - %s %s\n",string(datetime),"[ERROR]: An error occured during individual tumor analysis of",app.currentFileNameExt)
+                fprintf("%s - %s %s\n",string(datetime),"[ERROR]: An error occurred during individual tumor analysis of",app.currentFileNameExt)
                 %rethrow error to stop execution
                 rethrow(ME);
             end
@@ -2362,7 +2372,7 @@ classdef GLASS_AI_APP < matlab.apps.AppBase
                         error("Not a valid color map selection")
                 end % End SWITCH : targetColorMap
             catch ME
-                % alert user that an error occured if not already done
+                % alert user that an error occurred if not already done
                 if ~app.ErrorAlertAlreadyCreated
                     app.ErrorAlertAlreadyCreated = true;
                     message_text = "GLASS-AI encountered an error while fetching the color palette for the class confidence map." + ...
@@ -2467,7 +2477,6 @@ classdef GLASS_AI_APP < matlab.apps.AppBase
                     cd(app.RESOURCE_DIR_PATH)
                     cd("..")
                 end
-
             end
         end % End function: cleanUpGLASSAI
 
@@ -2604,7 +2613,6 @@ classdef GLASS_AI_APP < matlab.apps.AppBase
             try % load GLASS-AI from .mat file
                 pathToGLASSAI = fullfile(app.RESOURCE_DIR_PATH,"Program Files","GLASS_AI.mat");
 
-                
                 if isfile(pathToGLASSAI)
                     app.GLASS_AI_NET = load(pathToGLASSAI);
                     app.GLASS_AI_NET = app.GLASS_AI_NET.net; % get DAGnet from struct
@@ -2632,7 +2640,7 @@ classdef GLASS_AI_APP < matlab.apps.AppBase
                         newline + "[ERROR MESSAGE]" + newline + ME.message;
                     uialert(app.GLASSAIUIFigure,message_text,"Model loading error");
                 else
-                    message_text = "Could not find the GLASS-AI model. An unknown error occured." + ...
+                    message_text = "Could not find the GLASS-AI model. An unknown error occurred." + ...
                         newline + "If this error persits, try reinstalling GLASS-AI."+...
                         newline + "[ERROR MESSAGE]" + newline + ME.message;
                     uialert(app.GLASSAIUIFigure,message_text,"Model loading error");
@@ -2929,7 +2937,7 @@ classdef GLASS_AI_APP < matlab.apps.AppBase
                     uialert(app.GLASSAIUIFigure,message_text,"Analysis complete", 'Icon',"success")
                 end
             catch ME
-                % alert user that an error occured if not already done
+                % alert user that an error occurred if not already done
                 if ~app.ErrorAlertAlreadyCreated
                     message_text = "GLASS-AI encountered an unexpected error." + ...
                         newline + "[ERROR MESSAGE]" + newline + ME.message +...
@@ -3063,6 +3071,7 @@ classdef GLASS_AI_APP < matlab.apps.AppBase
             app.GLASSAIUIFigure = uifigure('Visible', 'off');
             app.GLASSAIUIFigure.Position = [100 100 723 581];
             app.GLASSAIUIFigure.Name = 'GLASS-AI';
+            app.GLASSAIUIFigure.Theme = 'light';
             app.GLASSAIUIFigure.CloseRequestFcn = createCallbackFcn(app, @GLASSAIUIFigureCloseRequest, true);
 
             % Create AnalysisOptionsPanel
@@ -3905,7 +3914,7 @@ classdef GLASS_AI_APP < matlab.apps.AppBase
             app.GradeMapScalingSlider.MajorTicks = [12.5 25 50 100];
             app.GradeMapScalingSlider.MajorTickLabels = {'1/8', '1/4', '1/2', 'FULL'};
             app.GradeMapScalingSlider.ValueChangedFcn = createCallbackFcn(app, @DiscreteSliderValueChanged, true);
-            app.GradeMapScalingSlider.MinorTicks = [];
+            app.GradeMapScalingSlider.MinorTicksMode = 'manual';
             app.GradeMapScalingSlider.Tooltip = {'Set the scaling factor used when generating the output tumor grade map. Default = 1/4'};
             app.GradeMapScalingSlider.Position = [134 208 150 3];
             app.GradeMapScalingSlider.Value = 25;
@@ -3922,7 +3931,7 @@ classdef GLASS_AI_APP < matlab.apps.AppBase
             app.SegmentationScalingSlider.MajorTicks = [12.5 25 50 100];
             app.SegmentationScalingSlider.MajorTickLabels = {'1/8', '1/4', '1/2', 'FULL'};
             app.SegmentationScalingSlider.ValueChangedFcn = createCallbackFcn(app, @DiscreteSliderValueChanged, true);
-            app.SegmentationScalingSlider.MinorTicks = [];
+            app.SegmentationScalingSlider.MinorTicksMode = 'manual';
             app.SegmentationScalingSlider.Tooltip = {'Set the scaling factor used when generating the output tumor segmentation map. Default = 1/2'};
             app.SegmentationScalingSlider.Position = [134 155 150 3];
             app.SegmentationScalingSlider.Value = 50;
@@ -3939,7 +3948,7 @@ classdef GLASS_AI_APP < matlab.apps.AppBase
             app.StainNormalizedImageScalingSlider.MajorTicks = [12.5 25 50 100];
             app.StainNormalizedImageScalingSlider.MajorTickLabels = {'1/8', '1/4', '1/2', 'FULL'};
             app.StainNormalizedImageScalingSlider.ValueChangedFcn = createCallbackFcn(app, @DiscreteSliderValueChanged, true);
-            app.StainNormalizedImageScalingSlider.MinorTicks = [];
+            app.StainNormalizedImageScalingSlider.MinorTicksMode = 'manual';
             app.StainNormalizedImageScalingSlider.Tooltip = {'Set the scaling factor used when generating the output stain normalized image. Default = FULL'};
             app.StainNormalizedImageScalingSlider.Position = [135 109 150 3];
             app.StainNormalizedImageScalingSlider.Value = 100;
@@ -3961,7 +3970,7 @@ classdef GLASS_AI_APP < matlab.apps.AppBase
             app.ConfidenceMapScalingSlider.Limits = [12.5 100];
             app.ConfidenceMapScalingSlider.MajorTicks = [12.5 25 50 100];
             app.ConfidenceMapScalingSlider.MajorTickLabels = {'1/8', '1/4', '1/2', 'FULL'};
-            app.ConfidenceMapScalingSlider.MinorTicks = [];
+            app.ConfidenceMapScalingSlider.MinorTicksMode = 'manual';
             app.ConfidenceMapScalingSlider.Tooltip = {'Set the scaling factor used when generating the maximum class confidence/probability map. '; 'Default = 1/4'};
             app.ConfidenceMapScalingSlider.Position = [137 58 150 3];
             app.ConfidenceMapScalingSlider.Value = 25;
