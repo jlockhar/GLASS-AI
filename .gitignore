@@ -32,3 +32,5 @@ StainNormalizationTesting.mlx
 /GLASS-AI_compile_WIN
 /GLASS-AI_compile_WIN_resources
 Resources/Program Files/view_glassai_overlay_shortcut.m
+*.json
+/GLASS-AI Standalone Application
