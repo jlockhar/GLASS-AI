@@ -1,5 +1,5 @@
 %project info
-projectRoot = "/Users/4470641/Documents/GitHub/GLASS-AI/";
+projectRoot = fileparts(mfilename("fullpath"));
 mlappFile = 'GLASS_AI_APP.mlapp';
 
 %compiled application info
